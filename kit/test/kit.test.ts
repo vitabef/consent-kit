@@ -622,7 +622,7 @@ describe("a decision", () => {
 });
 
 describe("no network before a decision", () => {
-	it("an undecided visitor: no fetch, no beacon, no XHR, no script element created", () => {
+	it("an undecided visitor: no fetch, no beacon, no XHR, no script element created (the one element is the page-end spacer)", () => {
 		const xhrOpen = vi.spyOn(XMLHttpRequest.prototype, "open");
 		page();
 		const create = vi.spyOn(document, "createElement");
@@ -631,7 +631,7 @@ describe("no network before a decision", () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(beaconSpy).not.toHaveBeenCalled();
 		expect(xhrOpen).not.toHaveBeenCalled();
-		expect(create).not.toHaveBeenCalled();
+		expect(create.mock.calls).toEqual([["div"]]);
 		expect(events).toEqual([]);
 		expect(decided()).toBe(false);
 	});
@@ -1302,10 +1302,26 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 	const banner = () => $("[data-ck-banner]");
 	const at = (el: Element, rect: DOMRect) => vi.spyOn(el, "getBoundingClientRect").mockReturnValue(rect);
 	const layerHeight = () => document.documentElement.style.getPropertyValue("--ck-layer-h");
+	/** The page-end spacer kit.js keeps while layer 1 is on screen. */
+	const spacer = () => document.getElementById("ck-sp");
 	const scrolls = (el: Element) => vi.spyOn(el, "scrollIntoView").mockImplementation(() => {});
+	/** `n` animation frames: the kit checks a focus once its position has held still for two frames. */
+	const frames = async (n: number) => {
+		for (let i = 0; i < n; i++) await nextFrame();
+	};
 	/** The visitor's motion preference, as matchMedia reports it. */
 	const motion = (reduce: boolean) =>
 		vi.stubGlobal("matchMedia", (query: string) => ({ matches: reduce && query === "(prefers-reduced-motion: reduce)", media: query }));
+	/** How `el` was focused, as :focus-visible tells: by a pointer (no match), or in an engine without the selector
+	 *  (matches() throws). happy-dom matches :focus-visible on every focus — a keyboard focus. */
+	const focusedBy = (el: Element, how: "pointer" | "an engine without :focus-visible") => {
+		const real = el.matches.bind(el);
+		vi.spyOn(el, "matches").mockImplementation((selector: string) => {
+			if (selector !== ":focus-visible") return real(selector);
+			if (how === "pointer") return false;
+			throw new DOMException(`'${selector}' is not a valid selector`, "SyntaxError");
+		});
+	};
 	/** An undecided page whose layer 1 is LAYER, reported once by the observer. */
 	const measured = (opts?: Parameters<typeof page>[0]) => {
 		page(opts);
@@ -1315,9 +1331,12 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		observers[0]?.report();
 		return layer;
 	};
-	/** kit.css's rules that make room for layer 1 (both read --ck-layer-h), and whether they apply to <html> now. */
+	/** kit.css's rules that make room for layer 1 (both read --ck-layer-h), and the elements each applies to now:
+	 *  ROOM = the scroll padding to <html> and <body>, the height to the spacer; NO_ROOM = none. */
 	const room = () => cssRules().filter(([, , body]) => body.includes("--ck-layer-h"));
-	const roomApplies = () => room().map(([, selectors]) => document.documentElement.matches(selectors.replace(/:after$/, "")));
+	const roomApplies = () => room().map(([, selectors]) => Array.from(document.querySelectorAll(selectors), (el) => el.tagName.toLowerCase()));
+	const ROOM = [["html", "body"], ["div"]];
+	const NO_ROOM = [[], []];
 
 	beforeEach(() => {
 		observers.length = 0;
@@ -1345,6 +1364,17 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		expect(observers[0]?.disconnected).toBe(false);
 	});
 
+	it("undecided: kit.js appends ONE spacer as the last child of <body> — an empty block hidden from assistive technology (a second run adds none)", () => {
+		measured();
+		const el = spacer();
+		expect(el?.tagName).toBe("DIV");
+		expect(document.body.lastElementChild).toBe(el);
+		expect(el?.getAttribute("aria-hidden")).toBe("true");
+		expect(el?.childNodes).toHaveLength(0);
+		runKit();
+		expect(document.querySelectorAll("#ck-sp")).toHaveLength(1);
+	});
+
 	it("without ResizeObserver, layer 1 is measured once at boot", () => {
 		vi.stubGlobal("ResizeObserver", undefined);
 		page();
@@ -1354,16 +1384,47 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		expect(layerHeight()).toBe("285px");
 	});
 
-	it("kit.css: the root's scroll padding is the height + 0.5rem (30vh until it is measured), the spacer after the page the same (no height until measured, screen only) — both only while the visitor is undecided and kit.js has booted", () => {
+	it("without ResizeObserver, every focus check reads layer 1's height again: no missing height after a boot before layout, no stale one after a rotation", async () => {
+		vi.stubGlobal("ResizeObserver", undefined);
+		motion(false);
+		page();
+		const layer = at(banner(), box(0, 0)); // not laid out yet when kit.js boots
+		runHead();
+		runKit();
+		expect(layerHeight()).toBe("");
+		layer.mockReturnValue(LAYER);
+		const link = footerLink();
+		at(link, box(100, 20));
+		link.focus();
+		await frames(2);
+		expect(layerHeight()).toBe("285px");
+		layer.mockReturnValue(box(352, 315)); // rotated: the text wraps once more
+		link.blur();
+		link.focus();
+		await frames(2);
+		expect(layerHeight()).toBe("315px");
+	});
+
+	it("kit.css: the scroll padding of <html> and <body> (a <body> that scrolls itself) is the height + 0.5rem (30vh until it is measured), the spacer's height the same (none until measured; screen only; its geometry forced) — both only while the visitor is undecided and kit.js has booted; no rule on html::after", () => {
 		expect(room()).toEqual([
-			["", "html:not(.ck-decided):not(.ck-off)", "scroll-padding-bottom:calc(var(--ck-layer-h, 30vh) + .5rem)"],
-			["screen", "html:not(.ck-decided):not(.ck-off):after", 'content:"";display:block;height:calc(var(--ck-layer-h) + .5rem)'],
+			[
+				"",
+				"html:not(.ck-decided):not(.ck-off),html:not(.ck-decided):not(.ck-off)>body",
+				"scroll-padding-bottom:calc(var(--ck-layer-h, 30vh) + .5rem)",
+			],
+			[
+				"screen",
+				"html:not(.ck-decided):not(.ck-off) #ck-sp",
+				"display:block!important;flex:none!important;height:calc(var(--ck-layer-h) + .5rem)!important;margin:0!important;padding:0!important;border:0!important;visibility:hidden!important;pointer-events:none!important",
+			],
 		]);
+		expect(cssRules().filter(([, selectors]) => selectors.includes("#ck-sp"))[0]).toEqual(["", "#ck-sp", "display:none!important"]);
+		expect(assets["kit.css"]).not.toMatch(/html[^{},]*::?after/);
 		measured();
-		expect(roomApplies()).toEqual([true, true]);
+		expect(roomApplies()).toEqual(ROOM);
 		for (const cls of ["ck-decided", "ck-off", "ck-decided ck-off"]) {
 			document.documentElement.className = cls;
-			expect(roomApplies()).toEqual([false, false]);
+			expect(roomApplies()).toEqual(NO_ROOM);
 		}
 	});
 
@@ -1377,14 +1438,15 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 				inDialog("save").click();
 			},
 		],
-	] as const)("after %s the height and the observer are gone — the padding and the spacer with them", (_label, decideHere) => {
+	] as const)("after %s the height, the observer and the spacer are gone — the padding with them", (_label, decideHere) => {
 		measured();
 		expect(layerHeight()).toBe("285px");
 		decideHere();
 		expect(decided()).toBe(true);
 		expect(layerHeight()).toBe("");
 		expect(observers[0]?.disconnected).toBe(true);
-		expect(roomApplies()).toEqual([false, false]);
+		expect(spacer()).toBeNull();
+		expect(roomApplies()).toEqual(NO_ROOM);
 	});
 
 	it.each([
@@ -1396,59 +1458,86 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 			},
 		],
 		[
-			"a decision in another tab, followed",
+			"a decision in another tab, followed when the tab comes back into view",
 			() => {
 				elsewhere(stored({ v: 2, a: 1, m: 0, t: now() }));
 				visibility("visible");
 			},
 		],
-	] as const)("%s: the height and the observer are gone too", (_label, follow) => {
+		[
+			"a decision in another tab, followed when the page comes back from the back/forward cache (pageshow)",
+			() => {
+				elsewhere(stored({ v: 2, a: 1, m: 0, t: now() }));
+				pageshow(true);
+			},
+		],
+	] as const)("%s: the height, the observer and the spacer are gone too", (_label, follow) => {
 		measured();
 		follow();
 		expect(decided()).toBe(true);
 		expect(layerHeight()).toBe("");
 		expect(observers[0]?.disconnected).toBe(true);
+		expect(spacer()).toBeNull();
 	});
 
 	it.each([
 		["a stored choice", { cookie: stored({ v: 2, a: 1, m: 0, t: now() }) }],
 		["GPC", { gpc: true }],
-	] as const)("decided at boot (%s): no observer, no height, neither padding nor spacer", (_label, opts) => {
+	] as const)("decided at boot (%s): no observer, no height, no spacer, no padding", (_label, opts) => {
 		measured(opts);
 		expect(observers).toEqual([]);
 		expect(layerHeight()).toBe("");
-		expect(roomApplies()).toEqual([false, false]);
+		expect(spacer()).toBeNull();
+		expect(roomApplies()).toEqual(NO_ROOM);
 	});
 
-	it("kit.js not booted by `load` (ck-off): no height, neither padding nor spacer — a late boot measures layer 1", () => {
+	it("an undecided page without layer-1 markup gets no observer, no spacer and no focus check", () => {
+		page();
+		banner().remove();
+		const listen = vi.spyOn(document, "addEventListener");
+		runHead();
+		runKit();
+		expect(observers).toEqual([]);
+		expect(layerHeight()).toBe("");
+		expect(spacer()).toBeNull();
+		expect(listen.mock.calls.map(([type]) => type)).not.toContain("focusin");
+	});
+
+	it("kit.js not booted by `load` (ck-off): no height, no spacer, no padding — a late boot adds the spacer and measures layer 1", () => {
 		page();
 		at(banner(), LAYER);
 		runHead();
 		window.dispatchEvent(new Event("load"));
 		expect(has("ck-off")).toBe(true);
 		expect(layerHeight()).toBe("");
-		expect(roomApplies()).toEqual([false, false]);
+		expect(spacer()).toBeNull();
+		expect(roomApplies()).toEqual(NO_ROOM);
 		runKit();
+		expect(document.body.lastElementChild).toBe(spacer());
 		observers[0]?.report();
 		expect(layerHeight()).toBe("285px");
-		expect(roomApplies()).toEqual([true, true]);
+		expect(roomApplies()).toEqual(ROOM);
 	});
 
 	it.each([
 		["entirely under it", box(600, 20)],
 		["partly under it", box(370, 20)],
+		["partly under it, partly below the viewport", box(650, 40)],
 		["taller than the space above it, its top under it", box(400, 500)],
-	])("a focused element that layer 1 still covers (%s) is scrolled clear of it a frame later — after the browser's own focus scrolling: the nearest edge, smooth", async (_label, rect) => {
+	])("a keyboard focus that layer 1 still covers (%s) is scrolled clear of it once its position has held still for two frames — after the browser's own focus scrolling: the nearest edge, smooth; once", async (_label, rect) => {
 		motion(false);
 		measured();
 		const link = footerLink();
 		at(link, rect);
 		const scroll = scrolls(link);
 		link.focus();
+		await frames(1);
 		expect(scroll).not.toHaveBeenCalled();
-		await nextFrame();
+		await frames(1);
 		expect(scroll).toHaveBeenCalledTimes(1);
 		expect(scroll).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
+		await frames(3);
+		expect(scroll).toHaveBeenCalledTimes(1);
 	});
 
 	it("reduced motion: the same scroll without animation (behavior auto)", async () => {
@@ -1458,9 +1547,64 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		at(link, box(600, 20));
 		const scroll = scrolls(link);
 		link.focus();
-		await nextFrame();
+		await frames(2);
 		expect(scroll).toHaveBeenCalledTimes(1);
 		expect(scroll).toHaveBeenCalledWith({ block: "nearest", behavior: "auto" });
+	});
+
+	it("an engine without :focus-visible: every focus counts as a keyboard focus", async () => {
+		motion(false);
+		measured();
+		const link = footerLink();
+		at(link, box(600, 20));
+		focusedBy(link, "an engine without :focus-visible");
+		const scroll = scrolls(link);
+		link.focus();
+		await frames(2);
+		expect(scroll).toHaveBeenCalledTimes(1);
+	});
+
+	it("a focus the browser is still scrolling into view (smooth: still moving a frame later) is left to it — checked once it holds still; clear of layer 1 by then, it is not scrolled again", async () => {
+		motion(false);
+		measured();
+		const link = footerLink();
+		at(link, box(250, 20)).mockReturnValueOnce(box(600, 20)).mockReturnValueOnce(box(450, 20)).mockReturnValueOnce(box(300, 20));
+		const scroll = scrolls(link);
+		link.focus();
+		await frames(8);
+		expect(scroll).not.toHaveBeenCalled();
+	});
+
+	it("a focus that holds still under layer 1 after the browser's own scrolling (an engine whose focus scroll ignores the scroll padding) is scrolled clear once, then", async () => {
+		motion(false);
+		measured();
+		const link = footerLink();
+		at(link, box(640, 20)).mockReturnValueOnce(box(700, 20)).mockReturnValueOnce(box(660, 20));
+		const scroll = scrolls(link);
+		link.focus();
+		await frames(3); // 700 → 660 → 640: still moving
+		expect(scroll).not.toHaveBeenCalled();
+		await frames(1); // 640 again: it holds still, under layer 1
+		expect(scroll).toHaveBeenCalledTimes(1);
+		await frames(3);
+		expect(scroll).toHaveBeenCalledTimes(1);
+	});
+
+	it("a focus that never holds still (an animated element) is checked after 120 frames at the latest, and the check ends there", async () => {
+		motion(false);
+		measured();
+		const link = footerLink();
+		let top = 500;
+		vi.spyOn(link, "getBoundingClientRect").mockImplementation(() => box(top++, 20));
+		const scroll = scrolls(link);
+		link.focus();
+		await frames(120);
+		expect(scroll).not.toHaveBeenCalled();
+		await frames(1);
+		expect(scroll).toHaveBeenCalledTimes(1);
+		await frames(3);
+		expect(scroll).toHaveBeenCalledTimes(1);
+		expect(top).toBe(621); // 121 reads: no frame after the check
 	});
 
 	/** Positions `el` at `rect` and returns it: the element the test then focuses. */
@@ -1475,6 +1619,29 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 			() => {
 				measured();
 				return placed(footerLink(), box(100, 20));
+			},
+		],
+		[
+			"an element below the viewport (a host's focus({ preventScroll: true })): layer 1 does not cover it",
+			() => {
+				measured();
+				return placed(footerLink(), box(900, 20));
+			},
+		],
+		[
+			"an element just below the viewport, its top on layer 1's bottom edge",
+			() => {
+				measured();
+				return placed(footerLink(), box(667, 20));
+			},
+		],
+		[
+			"a pointer focus (no :focus-visible) under layer 1: a pointer focuses what it shows",
+			() => {
+				measured();
+				const link = placed(footerLink(), box(600, 20));
+				focusedBy(link, "pointer");
+				return link;
 			},
 		],
 		[
@@ -1521,7 +1688,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		const el = setUp();
 		const scroll = scrolls(el);
 		el.focus();
-		await nextFrame();
+		await frames(4);
 		expect(document.activeElement).toBe(el);
 		expect(scroll).not.toHaveBeenCalled();
 	});
@@ -1536,9 +1703,28 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		runHead(); // a newer head snippet takes the page over before the frame
 		layer.mockReturnValue(box(352, 315));
 		observers[0]?.report();
-		await nextFrame();
+		await frames(4);
 		expect(layerHeight()).toBe("285px");
 		expect(scroll).not.toHaveBeenCalled();
+	});
+
+	it("a newer head snippet and its kit.js: the new kit takes the one spacer over and removes it at a decision; the old kit's observer stays connected, but writes nothing", () => {
+		const layer = measured();
+		const old = spacer();
+		runHead();
+		runKit();
+		expect(document.querySelectorAll("#ck-sp")).toHaveLength(1);
+		expect(spacer()).toBe(old);
+		expect(document.body.lastElementChild).toBe(old);
+		layer.mockReturnValue(box(352, 315));
+		observers[0]?.report();
+		expect(layerHeight()).toBe("285px");
+		observers[1]?.report();
+		expect(layerHeight()).toBe("315px");
+		layer1("accept").click();
+		expect(spacer()).toBeNull();
+		expect(layerHeight()).toBe("");
+		expect(observers.map((o) => o.disconnected)).toEqual([false, true]);
 	});
 
 	it("focus that moves on before the frame is not chased: only where focus is by then counts", async () => {
@@ -1552,7 +1738,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		const otherScroll = scrolls(other);
 		link.focus();
 		other.focus();
-		await nextFrame();
+		await frames(4);
 		expect(linkScroll).not.toHaveBeenCalled();
 		expect(otherScroll).not.toHaveBeenCalled();
 	});

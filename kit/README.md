@@ -363,8 +363,8 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
   the buttons in one row on the right.
 - It is hidden while `<html>` has `ck-decided` (decided), `ck-settings` (the dialog is open) or
   `ck-off` (kit.js had not booted by `load`), with scripting off, and in print.
-- While it is shown, the page makes room for it: a scroll padding on `<html>` and a spacer after the page, both from its
-  measured height ([accessibility](#accessibility), Focus not obscured).
+- While it is shown, the page makes room for it: a scroll padding on `<html>` and `<body>` and a spacer at the end of
+  `<body>`, all from its measured height ([accessibility](#accessibility), Focus not obscured).
 
 ## Accessibility
 
@@ -384,23 +384,53 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
 - **Focus not obscured** (WCAG 2.4.11): the first layer covers the bottom of the viewport, so while it is shown (the
   visitor undecided, kit.js booted) every focused element must be able to scroll clear of it — the last ones on the
   page, the footer's links, included. kit.js keeps the layer's height in the custom property `--ck-layer-h` on
-  `<html>`: a `ResizeObserver` follows every change (no layout is forced at boot); without one, it is measured once
-  at boot. kit.css turns it into:
-  - `scroll-padding-bottom` on `<html>` — the height + `0.5rem` — so the browser scrolls a focused element above the
-    layer; `30vh` until the height is measured;
-  - a spacer after the page, as high as that padding (screen media only), so that the last element can scroll that
-    far too. The spacer is `html::after`, after `<body>`: no box of the site changes size and no rule of the site is
-    overridden (`body` padding and `body::after` often carry a site's own styles). A site that styles `html::after`
-    itself shares that box with the kit while the layer is shown.
+  `<html>`: a `ResizeObserver` follows every change (no layout is forced at boot); without one, it is measured at boot
+  and again at every focus check (a rotation, a layout after boot). kit.css turns it into:
+  - `scroll-padding-bottom` on `<html>` and on `<body>` (for a `<body>` that is a scroll container itself) — the
+    height + `0.5rem` — so the browser scrolls a focused element above the layer; `30vh + 0.5rem` until the height is
+    measured;
+  - a spacer as high as that padding, so that the last element can scroll that far too: an empty
+    `<div id="ck-sp" aria-hidden="true">` that kit.js appends as the last child of `<body>`. Its geometry is forced
+    on the id with `!important` — `display: block`, the height, `flex: none`, no margin, padding or border,
+    `visibility: hidden`, `pointer-events: none` — so a site's usual rules for the children of `<body>` (display,
+    margins, flex shrinking) neither hide nor shrink it. As content of a `<body>` that stacks its children in a
+    column — the common case — it adds room whatever the site does with its root boxes: `html, body { height: 100% }`
+    (also as a flex column, the sticky-footer pattern), a flex `<html>`, a site's own `html::after` (left alone). A
+    `<body>` that lays its children out in a row is a limit (below). Screen media only; without a measured height it
+    has none.
 
-  Focus that the layer still covers a frame after the browser's own focus scrolling (an engine that ignores the scroll
-  padding for focus) is scrolled into view with `scrollIntoView({ block: "nearest" })`, `behavior: "smooth"` — or
-  `"auto"` when the visitor prefers reduced motion. Left alone: the layer's own controls, an element taller than the
-  space above the layer that already shows, and focus that has moved on by then. While the dialog is open the layer is
-  hidden and the property keeps its last value, so nothing behind the modal moves. A decision — or one followed from
-  another tab — removes the property, the observer and the focus check, and with them the padding and the spacer (a
-  page scrolled to its very end moves down by the spacer's height, right after the click). A decided visitor, GPC
-  included, never gets either: no layout shift.
+  A keyboard focus (`:focus-visible`; in an engine without that selector, every focus) that the layer still covers
+  once its position has held still for two frames (an engine that ignores the scroll padding for focus) is scrolled
+  into view with `scrollIntoView({ block: "nearest" })`, `behavior: "smooth"` — or `"auto"` when the visitor prefers
+  reduced motion. Waiting for a still position leaves the browser's own focus scroll alone, a smooth one too (a
+  site's `scroll-behavior: smooth`): it is never restarted; an element that keeps moving is checked after 120 frames.
+  Covered means overlapping the layer's box: an element below the viewport (a site's `focus({ preventScroll: true })`)
+  is not, and stays where it is. Left alone too: a pointer focus (a click focuses what it shows), the layer's own
+  controls, an element taller than the space above the layer that already shows, and focus that has moved on by
+  then. While the dialog is open the layer is hidden and the property keeps its last value, so nothing behind the
+  modal moves. A decision — or one followed from another tab — removes the property, the spacer, the observer and
+  the focus check, and with them the padding (a page scrolled to its very end moves down by the spacer's height,
+  right after the click). A decided visitor, GPC included, never gets either: no layout shift.
+
+  Limits:
+  - While the visitor is undecided, the scrollable area grows by the layer's height: a short page may become
+    scrollable, and a footer that `min-height: 100vh` on a flex `<body>` holds at the bottom moves up by that height
+    when kit.js boots — a layout shift.
+  - An app shell — `overflow: hidden` on `<html>` and `<body>`, the content scrolling in a container inside — gets its
+    room from `<body>`: a focus in the container's last layer height scrolls `<body>`, and the whole shell with it, up
+    by up to that height; it comes back when the visitor decides.
+  - A scroll container that does not move with `<body>` (`position: fixed`) gets no room: a focus in its last layer
+    height stays under the layer.
+  - A `<body>` that lays its children out in a row — `display: flex` in a row, a grid that flows into columns, a
+    grid with template areas that leave a cell empty — gets no room: the spacer becomes an item beside the content
+    (or in the empty cell), and a focus in the page's last layer height stays under the layer. With a `gap`,
+    `justify-content: space-between` or a column-flow grid the spacer also takes its share of the row until the
+    visitor decides: the main column is narrower or shifted, a grid gets one more column.
+  - The forced geometry covers display, height, flex, margins, padding and border, not `min-height`, `max-height`,
+    `position`, `float` or `order`: a site rule for the children of `<body>` that sets one of them (for example
+    `body > div { min-height: 50vh }`) can make the spacer taller or move it.
+  - The spacer is the last child of `<body>` when kit.js boots; whatever the site appends to `<body>` later comes
+    after it, and a focus there can stay under the layer.
 - **Equal weight**: the three decision buttons of a layer share one class (`.ck-cc-btn`) and one look; the close
   button is a quiet text button that decides nothing. Buttons are at least 44 px high, the close button 44 × 44 px, a
   switch's touch target 52 × 44 px; a 3 px focus ring; switch rules for forced colours and reduced motion.

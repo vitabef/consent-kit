@@ -20,11 +20,13 @@
  * NO network request before a decision: no record, no beacon, no gated script.
  *
  * Layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured): while it is on screen (undecided), its height —
- * kept current by a ResizeObserver, without one measured once at boot — is --ck-layer-h on <html>; kit.css turns
- * it into the root's scroll-padding-bottom and a spacer after the page, so every focused element, the last footer
- * link included, can scroll clear of it. Focus that layer 1 still covers a frame later (an engine that ignores
- * scroll-padding for focus) is scrolled into view to the nearest edge, smooth unless the visitor prefers reduced
- * motion. A decision — or one followed from another tab — removes the height, the observer and that check.
+ * kept current by a ResizeObserver, without one measured at boot and at every focus check — is --ck-layer-h on
+ * <html>; kit.css turns it into the scroll-padding-bottom of the root and of <body> and the height of a spacer
+ * kit.js appends as the last child of <body>, so every focused element, the last footer link included, can scroll
+ * clear of it. A keyboard focus (:focus-visible) that layer 1 still covers once its position has held still for two
+ * frames (an engine that ignores scroll-padding for focus) is scrolled into view to the nearest edge, smooth unless
+ * the visitor prefers reduced motion. A decision — or one followed from another tab — removes the height, the
+ * spacer, the observer and that check.
  *
  * A decision (a click) runs, in this order: delete every copy of the choice cookie (host and registrable
  * domain — a stale domain copy would otherwise be read first), write it (6 months, SameSite=Lax; Path=/,
@@ -165,35 +167,56 @@
   };
 
   /* ---------- layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured) ---------- */
-  // While layer 1 is on screen, its height is --ck-layer-h on <html>: kit.css turns it into the root's
-  // scroll-padding-bottom and the height of a spacer after the page. A ResizeObserver keeps it current without a
-  // layout forced at boot; 0 — layer 1 hidden behind the open dialog — keeps the last height, so nothing behind
-  // the modal moves.
+  // While layer 1 is on screen, its height is --ck-layer-h on <html>: kit.css turns it into the scroll-padding-bottom
+  // of the root and of <body> and the height of the spacer, an empty block kit.js keeps as the last child of <body>.
+  // A ResizeObserver keeps it current without a layout forced at boot; 0 — layer 1 hidden behind the open dialog —
+  // keeps the last height, so nothing behind the modal moves. A kit whose page a newer head snippet took over keeps
+  // its observer connected, but inert: it writes nothing any more (the new kit, once booted, takes the spacer over).
   const LAYER_H = "--ck-layer-h";
   let sizer = null;
-  const measure = () => {
-    const h = banner.getBoundingClientRect().height;
+  let spacer = null;
+  const put = (h) => {
     if (h && w.consentKit === api) html.style.setProperty(LAYER_H, h + "px");
   };
-  /** Focus that layer 1 still covers once the browser has scrolled it into view (an engine that ignores
-   *  scroll-padding for focus): a frame later it is scrolled clear — to the nearest edge, smooth unless the
-   *  visitor prefers reduced motion. An element taller than the space above layer 1 that already shows stays;
-   *  a hidden layer 1 (the dialog open, or decided in the meantime) has no height and covers nothing. */
+  const measure = () => put(banner.getBoundingClientRect().height);
+  /** A keyboard focus — :focus-visible; a pointer focuses what it already shows. An engine without it: every focus. */
+  const keyboard = (el) => {
+    try {
+      return el.matches(":focus-visible");
+    } catch (e) {
+      return true;
+    }
+  };
+  /** A keyboard focus that layer 1 still covers after the browser's own focus scroll (an engine that ignores
+   *  scroll-padding for focus) is scrolled clear — to the nearest edge, smooth unless the visitor prefers reduced
+   *  motion. It is checked once its position has held still for two frames (120 at the latest), so a smooth focus
+   *  scroll still under way is never restarted. Covered = overlapping layer 1's box: an element below the
+   *  viewport (a host's focus with preventScroll) is not; an element taller than the space above layer 1 that
+   *  already shows stays; a hidden layer 1 (the dialog open, or decided meanwhile) has no height. Without an
+   *  observer every check measures layer 1 again (a rotation). */
   const uncover = (e) => {
     const t = e.target;
-    w.requestAnimationFrame(() => {
-      if (w.consentKit !== api || d.activeElement !== t || banner.contains(t)) return;
+    let top; // the target's top a frame earlier
+    let n = 0;
+    const check = () => {
+      if (w.consentKit !== api || d.activeElement !== t || banner.contains(t) || !keyboard(t)) return;
       const b = banner.getBoundingClientRect();
       const r = t.getBoundingClientRect();
-      if (b.height && r.bottom > b.top && (r.top >= b.top || r.height < b.top)) {
+      if (!sizer) put(b.height);
+      if (r.top !== top && n++ < 120) {
+        top = r.top;
+        w.requestAnimationFrame(check);
+      } else if (b.height && r.bottom > b.top && r.top < b.bottom && (r.top >= b.top || r.height < b.top)) {
         t.scrollIntoView({ block: "nearest", behavior: w.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
       }
-    });
+    };
+    w.requestAnimationFrame(check);
   };
-  /** Decided: layer 1 hides for good — its height (the padding, the spacer), the observer and the focus check go. */
+  /** Decided: layer 1 hides for good — its height (the padding), the spacer, the observer and the focus check go. */
   const hide = () => {
     html.classList.add(DECIDED);
     if (sizer) sizer.disconnect();
+    if (spacer) spacer.remove();
     html.style.removeProperty(LAYER_H);
     d.removeEventListener("focusin", uncover, true);
   };
@@ -410,7 +433,12 @@
     activate();
     emit();
   } else if (banner) {
-    // undecided: layer 1 is on screen
+    // undecided: layer 1 is on screen, and the spacer at the end of the page — one (a kit before this one, on a page
+    // a newer head snippet took over, may have left its own)
+    spacer = d.getElementById("ck-sp") || d.createElement("div");
+    spacer.id = "ck-sp";
+    spacer.setAttribute("aria-hidden", "true");
+    d.body.appendChild(spacer);
     if (w.ResizeObserver) (sizer = new w.ResizeObserver(measure)).observe(banner);
     else measure();
     d.addEventListener("focusin", uncover, true);
