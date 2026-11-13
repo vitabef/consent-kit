@@ -363,8 +363,8 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
   the buttons in one row on the right.
 - It is hidden while `<html>` has `ck-decided` (decided), `ck-settings` (the dialog is open) or
   `ck-off` (kit.js had not booted by `load`), with scripting off, and in print.
-- While the visitor is undecided, `<html>` gets `scroll-padding-bottom: 30vh`, so a focused element scrolls clear of the
-  first layer.
+- While it is shown, the page makes room for it: a scroll padding on `<html>` and a spacer after the page, both from its
+  measured height ([accessibility](#accessibility), Focus not obscured).
 
 ## Accessibility
 
@@ -381,6 +381,26 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
   `<main>` (else `<body>`) with a temporary `tabindex="-1"`; after a decision in the first layer, or one followed from
   another tab while focus is in it, it goes to `<main>`. A late `close` event of an earlier opening (Chromium fires it a
   task after Escape) leaves a dialog opened again in the meantime alone.
+- **Focus not obscured** (WCAG 2.4.11): the first layer covers the bottom of the viewport, so while it is shown (the
+  visitor undecided, kit.js booted) every focused element must be able to scroll clear of it — the last ones on the
+  page, the footer's links, included. kit.js keeps the layer's height in the custom property `--ck-layer-h` on
+  `<html>`: a `ResizeObserver` follows every change (no layout is forced at boot); without one, it is measured once
+  at boot. kit.css turns it into:
+  - `scroll-padding-bottom` on `<html>` — the height + `0.5rem` — so the browser scrolls a focused element above the
+    layer; `30vh` until the height is measured;
+  - a spacer after the page, as high as that padding (screen media only), so that the last element can scroll that
+    far too. The spacer is `html::after`, after `<body>`: no box of the site changes size and no rule of the site is
+    overridden (`body` padding and `body::after` often carry a site's own styles). A site that styles `html::after`
+    itself shares that box with the kit while the layer is shown.
+
+  Focus that the layer still covers a frame after the browser's own focus scrolling (an engine that ignores the scroll
+  padding for focus) is scrolled into view with `scrollIntoView({ block: "nearest" })`, `behavior: "smooth"` — or
+  `"auto"` when the visitor prefers reduced motion. Left alone: the layer's own controls, an element taller than the
+  space above the layer that already shows, and focus that has moved on by then. While the dialog is open the layer is
+  hidden and the property keeps its last value, so nothing behind the modal moves. A decision — or one followed from
+  another tab — removes the property, the observer and the focus check, and with them the padding and the spacer (a
+  page scrolled to its very end moves down by the spacer's height, right after the click). A decided visitor, GPC
+  included, never gets either: no layout shift.
 - **Equal weight**: the three decision buttons of a layer share one class (`.ck-cc-btn`) and one look; the close
   button is a quiet text button that decides nothing. Buttons are at least 44 px high, the close button 44 × 44 px, a
   switch's touch target 52 × 44 px; a 3 px focus ring; switch rules for forced colours and reduced motion.

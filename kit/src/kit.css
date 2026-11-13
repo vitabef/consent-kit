@@ -95,9 +95,22 @@
   display: none;
 }
 
-/* Undecided: keep a focused element clear of layer 1 where the page can scroll (WCAG 2.4.11). */
+/* Undecided: a focused element must be able to scroll clear of layer 1 (WCAG 2.4.11 Focus Not Obscured). While
+   layer 1 is on screen, kit.js keeps its height in --ck-layer-h on <html>: the root's scroll padding (30vh until
+   it is measured) and a spacer after the page, so that the last elements — the footer's links — can scroll above
+   layer 1 too. The spacer is the root's own ::after, after <body>: no box of the host changes and no host rule
+   is overridden (body padding or body::after often carry the host's own styles); without a measured height it
+   has none, and a decided visitor never gets it. */
 html:not(.ck-decided):not(.ck-off) {
-  scroll-padding-bottom: 30vh;
+  scroll-padding-bottom: calc(var(--ck-layer-h, 30vh) + 0.5rem);
+}
+
+@media screen {
+  html:not(.ck-decided):not(.ck-off)::after {
+    content: "";
+    display: block;
+    height: calc(var(--ck-layer-h) + 0.5rem);
+  }
 }
 
 .ck-cc .ck-cc-i {

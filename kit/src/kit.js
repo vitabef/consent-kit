@@ -19,6 +19,13 @@
  *      has missed the on-load event.
  * NO network request before a decision: no record, no beacon, no gated script.
  *
+ * Layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured): while it is on screen (undecided), its height —
+ * kept current by a ResizeObserver, without one measured once at boot — is --ck-layer-h on <html>; kit.css turns
+ * it into the root's scroll-padding-bottom and a spacer after the page, so every focused element, the last footer
+ * link included, can scroll clear of it. Focus that layer 1 still covers a frame later (an engine that ignores
+ * scroll-padding for focus) is scrolled into view to the nearest edge, smooth unless the visitor prefers reduced
+ * motion. A decision — or one followed from another tab — removes the height, the observer and that check.
+ *
  * A decision (a click) runs, in this order: delete every copy of the choice cookie (host and registrable
  * domain — a stale domain copy would otherwise be read first), write it (6 months, SameSite=Lax; Path=/,
  * Secure on https), the Consent Mode update (consentKit._u — the head snippet's one implementation:
@@ -157,6 +164,40 @@
     t.focus({ preventScroll: true });
   };
 
+  /* ---------- layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured) ---------- */
+  // While layer 1 is on screen, its height is --ck-layer-h on <html>: kit.css turns it into the root's
+  // scroll-padding-bottom and the height of a spacer after the page. A ResizeObserver keeps it current without a
+  // layout forced at boot; 0 — layer 1 hidden behind the open dialog — keeps the last height, so nothing behind
+  // the modal moves.
+  const LAYER_H = "--ck-layer-h";
+  let sizer = null;
+  const measure = () => {
+    const h = banner.getBoundingClientRect().height;
+    if (h && w.consentKit === api) html.style.setProperty(LAYER_H, h + "px");
+  };
+  /** Focus that layer 1 still covers once the browser has scrolled it into view (an engine that ignores
+   *  scroll-padding for focus): a frame later it is scrolled clear — to the nearest edge, smooth unless the
+   *  visitor prefers reduced motion. An element taller than the space above layer 1 that already shows stays;
+   *  a hidden layer 1 (the dialog open, or decided in the meantime) has no height and covers nothing. */
+  const uncover = (e) => {
+    const t = e.target;
+    w.requestAnimationFrame(() => {
+      if (w.consentKit !== api || d.activeElement !== t || banner.contains(t)) return;
+      const b = banner.getBoundingClientRect();
+      const r = t.getBoundingClientRect();
+      if (b.height && r.bottom > b.top && (r.top >= b.top || r.height < b.top)) {
+        t.scrollIntoView({ block: "nearest", behavior: w.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      }
+    });
+  };
+  /** Decided: layer 1 hides for good — its height (the padding, the spacer), the observer and the focus check go. */
+  const hide = () => {
+    html.classList.add(DECIDED);
+    if (sizer) sizer.disconnect();
+    html.style.removeProperty(LAYER_H);
+    d.removeEventListener("focusin", uncover, true);
+  };
+
   /** A fresh page (a loaded tag cannot be unloaded). Deciding clicks wait for it — for 10 s: a host's
    *  beforeunload „stay“ cancels the reload, and the page must not stay dead. */
   const reload = () => {
@@ -199,7 +240,7 @@
     activate();
     emit();
     record(action);
-    html.classList.add(DECIDED);
+    hide();
     return false;
   };
 
@@ -329,7 +370,7 @@
       if (!n.g) api._u(n.a, n.m);
       activate();
       emit();
-      html.classList.add(DECIDED);
+      hide();
       if (dialog) syncSwitches();
       if (focused) land();
     }
@@ -368,6 +409,11 @@
   if (api._s.d) {
     activate();
     emit();
+  } else if (banner) {
+    // undecided: layer 1 is on screen
+    if (w.ResizeObserver) (sizer = new w.ResizeObserver(measure)).observe(banner);
+    else measure();
+    d.addEventListener("focusin", uncover, true);
   }
   api._k = 1;
   if (queued) open(null);

@@ -121,6 +121,7 @@ beforeEach(() => {
 	delete win().consentKit;
 	win().dataLayer = [];
 	document.documentElement.className = "";
+	document.documentElement.removeAttribute("style"); // an earlier kit's layer-1 height (--ck-layer-h)
 	document.documentElement.lang = "de";
 });
 
@@ -254,6 +255,16 @@ function hiders(): string[] {
 		.sort();
 }
 const layer1Shown = () => !hiders().some((sel) => document.querySelector(sel) === $("[data-ck-banner]"));
+
+/** Every rule of the SHIPPED CSS, in order: [media condition ("" at the top level), selectors, declarations]. */
+function cssRules(): [string, string, string][] {
+	const out: [string, string, string][] = [];
+	for (const m of assets["kit.css"].matchAll(/@media([^{]*)\{((?:[^{}]*\{[^{}]*\})*)[^{}]*\}|([^{}@]+)\{([^{}]*)\}/g)) {
+		if (m[1] === undefined) out.push(["", m[3] ?? "", m[4] ?? ""]);
+		else for (const [, selectors = "", body = ""] of (m[2] ?? "").matchAll(/([^{}]+)\{([^{}]*)\}/g)) out.push([m[1].trim(), selectors, body]);
+	}
+	return out;
+}
 
 describe("head snippet — the stored choice", () => {
 	it("a valid choice for the current revision: html class, the Consent Mode update in <head>, get()", () => {
@@ -1256,6 +1267,294 @@ describe("the settings dialog", () => {
 		late.dispatchEvent(click);
 		expect(click.defaultPrevented).toBe(true);
 		expect(dialog().open).toBe(true);
+	});
+});
+
+/** ResizeObserver stand-in (happy-dom's never reports): what is observed, whether it was disconnected; `report()`
+ *  is the browser reporting a resize — the kit reads the size from the element itself. */
+const observers: FakeResizeObserver[] = [];
+class FakeResizeObserver {
+	observed: Element[] = [];
+	disconnected = false;
+	private readonly callback: ResizeObserverCallback;
+	constructor(callback: ResizeObserverCallback) {
+		this.callback = callback;
+		observers.push(this);
+	}
+	observe(el: Element) {
+		this.observed.push(el);
+	}
+	unobserve() {}
+	disconnect() {
+		this.disconnected = true;
+	}
+	report() {
+		this.callback([], this as unknown as ResizeObserver);
+	}
+}
+
+describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () => {
+	/** A layout box as getBoundingClientRect reports it — happy-dom computes no layout. */
+	const box = (top: number, height: number) =>
+		({ x: 0, y: top, top, bottom: top + height, left: 0, right: 375, width: 375, height, toJSON: () => ({}) }) as DOMRect;
+	/** Layer 1 as measured on a 375 × 667 phone: 285 px high at the bottom of the viewport. */
+	const LAYER = box(382, 285);
+	const banner = () => $("[data-ck-banner]");
+	const at = (el: Element, rect: DOMRect) => vi.spyOn(el, "getBoundingClientRect").mockReturnValue(rect);
+	const layerHeight = () => document.documentElement.style.getPropertyValue("--ck-layer-h");
+	const scrolls = (el: Element) => vi.spyOn(el, "scrollIntoView").mockImplementation(() => {});
+	/** The visitor's motion preference, as matchMedia reports it. */
+	const motion = (reduce: boolean) =>
+		vi.stubGlobal("matchMedia", (query: string) => ({ matches: reduce && query === "(prefers-reduced-motion: reduce)", media: query }));
+	/** An undecided page whose layer 1 is LAYER, reported once by the observer. */
+	const measured = (opts?: Parameters<typeof page>[0]) => {
+		page(opts);
+		const layer = at(banner(), LAYER);
+		runHead();
+		runKit();
+		observers[0]?.report();
+		return layer;
+	};
+	/** kit.css's rules that make room for layer 1 (both read --ck-layer-h), and whether they apply to <html> now. */
+	const room = () => cssRules().filter(([, , body]) => body.includes("--ck-layer-h"));
+	const roomApplies = () => room().map(([, selectors]) => document.documentElement.matches(selectors.replace(/:after$/, "")));
+
+	beforeEach(() => {
+		observers.length = 0;
+		vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+	});
+
+	it("undecided: layer 1's height becomes --ck-layer-h on <html> at the observer's first report — no layout forced at boot — and follows every resize; hidden behind the open dialog (0) it keeps the last height", () => {
+		page();
+		const layer = at(banner(), LAYER);
+		runHead();
+		runKit();
+		expect(observers).toHaveLength(1);
+		expect(observers[0]?.observed).toEqual([banner()]);
+		expect(layer).not.toHaveBeenCalled();
+		expect(layerHeight()).toBe("");
+		observers[0]?.report();
+		expect(layerHeight()).toBe("285px");
+		layer.mockReturnValue(box(352, 315)); // a narrower viewport: the text wraps once more
+		observers[0]?.report();
+		expect(layerHeight()).toBe("315px");
+		layer1Settings().click();
+		layer.mockReturnValue(box(0, 0)); // display: none while the dialog is open
+		observers[0]?.report();
+		expect(layerHeight()).toBe("315px");
+		expect(observers[0]?.disconnected).toBe(false);
+	});
+
+	it("without ResizeObserver, layer 1 is measured once at boot", () => {
+		vi.stubGlobal("ResizeObserver", undefined);
+		page();
+		at(banner(), LAYER);
+		runHead();
+		runKit();
+		expect(layerHeight()).toBe("285px");
+	});
+
+	it("kit.css: the root's scroll padding is the height + 0.5rem (30vh until it is measured), the spacer after the page the same (no height until measured, screen only) — both only while the visitor is undecided and kit.js has booted", () => {
+		expect(room()).toEqual([
+			["", "html:not(.ck-decided):not(.ck-off)", "scroll-padding-bottom:calc(var(--ck-layer-h, 30vh) + .5rem)"],
+			["screen", "html:not(.ck-decided):not(.ck-off):after", 'content:"";display:block;height:calc(var(--ck-layer-h) + .5rem)'],
+		]);
+		measured();
+		expect(roomApplies()).toEqual([true, true]);
+		for (const cls of ["ck-decided", "ck-off", "ck-decided ck-off"]) {
+			document.documentElement.className = cls;
+			expect(roomApplies()).toEqual([false, false]);
+		}
+	});
+
+	it.each([
+		["accept in layer 1", () => layer1("accept").click()],
+		["reject in layer 1", () => layer1("reject").click()],
+		[
+			"save in the dialog",
+			() => {
+				layer1Settings().click();
+				inDialog("save").click();
+			},
+		],
+	] as const)("after %s the height and the observer are gone — the padding and the spacer with them", (_label, decideHere) => {
+		measured();
+		expect(layerHeight()).toBe("285px");
+		decideHere();
+		expect(decided()).toBe(true);
+		expect(layerHeight()).toBe("");
+		expect(observers[0]?.disconnected).toBe(true);
+		expect(roomApplies()).toEqual([false, false]);
+	});
+
+	it.each([
+		[
+			"GPC read when the page comes back into view",
+			() => {
+				Object.defineProperty(navigator, "globalPrivacyControl", { configurable: true, value: true });
+				visibility("visible");
+			},
+		],
+		[
+			"a decision in another tab, followed",
+			() => {
+				elsewhere(stored({ v: 2, a: 1, m: 0, t: now() }));
+				visibility("visible");
+			},
+		],
+	] as const)("%s: the height and the observer are gone too", (_label, follow) => {
+		measured();
+		follow();
+		expect(decided()).toBe(true);
+		expect(layerHeight()).toBe("");
+		expect(observers[0]?.disconnected).toBe(true);
+	});
+
+	it.each([
+		["a stored choice", { cookie: stored({ v: 2, a: 1, m: 0, t: now() }) }],
+		["GPC", { gpc: true }],
+	] as const)("decided at boot (%s): no observer, no height, neither padding nor spacer", (_label, opts) => {
+		measured(opts);
+		expect(observers).toEqual([]);
+		expect(layerHeight()).toBe("");
+		expect(roomApplies()).toEqual([false, false]);
+	});
+
+	it("kit.js not booted by `load` (ck-off): no height, neither padding nor spacer — a late boot measures layer 1", () => {
+		page();
+		at(banner(), LAYER);
+		runHead();
+		window.dispatchEvent(new Event("load"));
+		expect(has("ck-off")).toBe(true);
+		expect(layerHeight()).toBe("");
+		expect(roomApplies()).toEqual([false, false]);
+		runKit();
+		observers[0]?.report();
+		expect(layerHeight()).toBe("285px");
+		expect(roomApplies()).toEqual([true, true]);
+	});
+
+	it.each([
+		["entirely under it", box(600, 20)],
+		["partly under it", box(370, 20)],
+		["taller than the space above it, its top under it", box(400, 500)],
+	])("a focused element that layer 1 still covers (%s) is scrolled clear of it a frame later — after the browser's own focus scrolling: the nearest edge, smooth", async (_label, rect) => {
+		motion(false);
+		measured();
+		const link = footerLink();
+		at(link, rect);
+		const scroll = scrolls(link);
+		link.focus();
+		expect(scroll).not.toHaveBeenCalled();
+		await nextFrame();
+		expect(scroll).toHaveBeenCalledTimes(1);
+		expect(scroll).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
+	});
+
+	it("reduced motion: the same scroll without animation (behavior auto)", async () => {
+		motion(true);
+		measured();
+		const link = footerLink();
+		at(link, box(600, 20));
+		const scroll = scrolls(link);
+		link.focus();
+		await nextFrame();
+		expect(scroll).toHaveBeenCalledTimes(1);
+		expect(scroll).toHaveBeenCalledWith({ block: "nearest", behavior: "auto" });
+	});
+
+	/** Positions `el` at `rect` and returns it: the element the test then focuses. */
+	const placed = (el: HTMLElement, rect: DOMRect) => {
+		at(el, rect);
+		return el;
+	};
+
+	it.each([
+		[
+			"an element above layer 1",
+			() => {
+				measured();
+				return placed(footerLink(), box(100, 20));
+			},
+		],
+		[
+			"layer 1's own button",
+			() => {
+				measured();
+				return placed(layer1("reject"), box(600, 44));
+			},
+		],
+		[
+			"an element taller than the space above layer 1 that already shows (focus landing on <main>)",
+			() => {
+				measured();
+				$("main").setAttribute("tabindex", "-1");
+				return placed($("main"), box(50, 1950));
+			},
+		],
+		[
+			"layer 1 hidden behind the open dialog",
+			() => {
+				const layer = measured();
+				layer1Settings().click();
+				layer.mockReturnValue(box(0, 0));
+				return placed(toggle("analytics"), box(600, 24));
+			},
+		],
+		[
+			"a visitor decided at boot",
+			() => {
+				measured({ cookie: stored({ v: 2, a: 1, m: 0, t: now() }) });
+				return placed(footerLink(), box(600, 20));
+			},
+		],
+		[
+			"a visitor who decided on this page",
+			() => {
+				measured();
+				layer1("accept").click();
+				return placed(footerLink(), box(600, 20));
+			},
+		],
+	] as const)("no scroll for %s", async (_label, setUp) => {
+		motion(false);
+		const el = setUp();
+		const scroll = scrolls(el);
+		el.focus();
+		await nextFrame();
+		expect(document.activeElement).toBe(el);
+		expect(scroll).not.toHaveBeenCalled();
+	});
+
+	it("the observer and the focus check of a kit whose page a newer head snippet now owns never touch the page", async () => {
+		motion(false);
+		const layer = measured();
+		const link = footerLink();
+		at(link, box(600, 20));
+		const scroll = scrolls(link);
+		link.focus();
+		runHead(); // a newer head snippet takes the page over before the frame
+		layer.mockReturnValue(box(352, 315));
+		observers[0]?.report();
+		await nextFrame();
+		expect(layerHeight()).toBe("285px");
+		expect(scroll).not.toHaveBeenCalled();
+	});
+
+	it("focus that moves on before the frame is not chased: only where focus is by then counts", async () => {
+		motion(false);
+		measured({ extra: GATED + '<a id="other" href="#other">Other</a>' });
+		const link = footerLink();
+		at(link, box(600, 20));
+		const linkScroll = scrolls(link);
+		const other = $("#other");
+		at(other, box(100, 20));
+		const otherScroll = scrolls(other);
+		link.focus();
+		other.focus();
+		await nextFrame();
+		expect(linkScroll).not.toHaveBeenCalled();
+		expect(otherScroll).not.toHaveBeenCalled();
 	});
 });
 
