@@ -21,6 +21,10 @@ The build exits with code 1 when a file is over its budget. The budgets are abou
 hard ceilings of 1 KB / 3 KB / 6 KB (the kit sits on every page of a site); `kit/test/build.test.ts` checks both. The
 file names are fixed: the build adds no fingerprint — the site's pipeline fingerprints `kit.js` when it vendors it.
 
+The build writes `head.js`, `kit.js` and `kit.css` once more, byte for byte, to `dist/` at the repository root. That
+copy is committed: it is what a site vendors and what a site adapter mounts, and `kit/test/build.test.ts` fails while
+it differs from a fresh build.
+
 ## Page structure
 
 ```html

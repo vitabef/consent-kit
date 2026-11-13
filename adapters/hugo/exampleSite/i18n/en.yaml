@@ -1,0 +1,3 @@
+# The site's own strings. The kit's strings (consentKit_*) come from the module; an entry here with the same
+# id would replace the module's sample.
+cookieSettings: "Cookie settings"

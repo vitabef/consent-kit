@@ -1,0 +1,12 @@
+{{- /* consent-kit: the deferred logic file, right before </body> (adapters/hugo/README.md, Placement): kit.js from
+  assets/consent-kit/, fingerprinted, with Subresource Integrity. Call: partial "consent-kit/script.html" .
+  (the context is not read), or with (dict "nonce" $nonce) for a site CSP with nonces. */ -}}
+{{- $nonce := "" -}}
+{{- if reflect.IsMap . -}}{{- with .nonce -}}{{- $nonce = . -}}{{- end -}}{{- end -}}
+{{- with resources.Get "consent-kit/kit.js" -}}
+  {{- with . | fingerprint -}}
+<script data-cfasync="false" src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}"{{ with $nonce }} nonce="{{ . }}"{{ end }} defer></script>
+  {{- end -}}
+{{- else -}}
+  {{- errorf "consent-kit: assets/consent-kit/kit.js is missing: import the module (adapters/hugo/README.md)" -}}
+{{- end -}}

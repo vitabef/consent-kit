@@ -1,0 +1,18 @@
+{{- /* consent-kit: the <head> part, right AFTER the site's Google Consent Mode defaults (adapters/hugo/README.md,
+  Placement): the config block from site.Params.consentKit, the inline head snippet and the inline styles with the
+  colour overrides. Call: partial "consent-kit/head.html" . (the context is not read), or with
+  (dict "nonce" $nonce) for a site CSP with nonces: the nonce goes on the head snippet and the <style>.
+  Every <script> carries data-cfasync="false". The JSON is HTML-escaped (no "<" in it), so no value can close
+  the element. */ -}}
+{{- $ck := partialCached "consent-kit/params.html" . site.Language.Lang -}}
+{{- $nonce := "" -}}
+{{- if reflect.IsMap . -}}{{- with .nonce -}}{{- $nonce = . -}}{{- end -}}{{- end -}}
+{{- $head := resources.Get "consent-kit/head.js" -}}
+{{- $css := resources.Get "consent-kit/kit.css" -}}
+{{- if not (and $head $css) -}}
+  {{- errorf "consent-kit: assets/consent-kit/head.js or kit.css is missing: import the module (adapters/hugo/README.md)" -}}
+{{- else -}}
+<script type="application/json" id="ck-config" data-cfasync="false">{{ $ck.config | jsonify | safeJS }}</script>
+<script data-cfasync="false"{{ with $nonce }} nonce="{{ . }}"{{ end }}>{{ $head.Content | chomp | safeJS }}</script>
+<style{{ with $nonce }} nonce="{{ . }}"{{ end }}>{{ $css.Content | chomp | safeCSS }}{{ $ck.css | safeCSS }}</style>
+{{- end -}}

@@ -1,0 +1,25 @@
+# consent-kit as a Hugo module: a site imports `github.com/vitabef/consent-kit` and renders the kit with three
+# partials (adapters/hugo/README.md). Only the mounts below reach a site: the partials, the sample strings, the
+# committed build output (dist/, written by `node kit/build.mjs`) and an empty npm manifest.
+[module]
+  [module.hugoVersion]
+    min = "0.141.0"
+
+  [[module.mounts]]
+    source = "adapters/hugo/layouts"
+    target = "layouts"
+
+  [[module.mounts]]
+    source = "adapters/hugo/i18n"
+    target = "i18n"
+
+  [[module.mounts]]
+    source = "dist"
+    target = "assets/consent-kit"
+
+  # The module needs no npm package. Without a mount of its own into assets/_jsconfig, Hugo mounts the
+  # repository's package.json there (the records service's tooling), and `hugo mod npm pack` would merge its
+  # dependencies into a site's package.json.
+  [[module.mounts]]
+    source = "adapters/hugo/package.hugo.json"
+    target = "assets/_jsconfig/package.hugo.json"

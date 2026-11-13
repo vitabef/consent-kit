@@ -30,10 +30,10 @@ accepted. Security reports: [SECURITY.md](SECURITY.md).
 
 | Piece | Source | Goes into a page as |
 |---|---|---|
-| Head snippet | `kit/src/head.js` → `kit/dist/head.js` | inline `<script data-cfasync="false">` in `<head>` |
-| Styles | `kit/src/kit.css` → `kit/dist/kit.css` | inline `<style>` in `<head>` |
+| Head snippet | `kit/src/head.js` → `dist/head.js` | inline `<script data-cfasync="false">` in `<head>` |
+| Styles | `kit/src/kit.css` → `dist/kit.css` | inline `<style>` in `<head>` |
 | First layer + settings dialog | `kit/templates/banner.html` + `kit/src/i18n/*.json` | server-rendered markup, first in `<body>` |
-| Logic | `kit/src/kit.js` → `kit/dist/kit.js` | one same-origin `<script data-cfasync="false" defer>` |
+| Logic | `kit/src/kit.js` → `dist/kit.js` | one same-origin `<script data-cfasync="false" defer>` |
 
 No dependency at runtime, no network request before a decision. After a decision the kit stores the choice in a
 first-party cookie, updates Google Consent Mode, activates the granted `type="text/plain"` scripts and sends one record
@@ -65,6 +65,15 @@ A Hono Worker, reachable only on its custom domain (`routes` in the [configurati
   not kept either: they exist only in a live `npx wrangler tail`.
 - **Three years**, then the hourly prune deletes the record.
 
+## Use with Hugo
+
+The repository is also a Hugo module (`go.mod`, `hugo.toml`). A Hugo site imports `github.com/vitabef/consent-kit`,
+pinned to a version (`hugo mod get github.com/vitabef/consent-kit@vX.Y.Z`), sets `params.consentKit` and calls three
+partials: `consent-kit/head.html` right after its Google Consent Mode defaults, `consent-kit/banner.html` first in
+`<body>`, `consent-kit/script.html` right before `</body>`. The module mounts only the partials, the sample strings and
+the committed build output `dist/` — the same files any other site vendors. Parameters, own texts, versions and
+local development: [adapters/hugo/README.md](adapters/hugo/README.md).
+
 ## Repository layout
 
 | Path | What |
@@ -72,10 +81,13 @@ A Hono Worker, reachable only on its custom domain (`routes` in the [configurati
 | `kit/src/head.js`, `kit/src/kit.js`, `kit/src/kit.css` | the kit's three shipped files (sources) |
 | `kit/src/i18n/de.json`, `en.json` | the reference strings — sample wording; a site supplies its own texts |
 | `kit/templates/banner.html` | the reference markup: first layer + settings dialog |
-| `kit/build.mjs` | the build: minify into `kit/dist/` (git-ignored), brotli budgets, demo pages |
+| `kit/build.mjs` | the build: minify into `kit/dist/` (git-ignored) and `dist/`, write the Hugo adapter's generated files, brotli budgets, demo pages |
 | `kit/demo/` | a fake host page for local development (never deployed) |
-| `kit/test/` | `kit.test.ts` runs the minified kit in happy-dom; `build.test.ts` checks budgets, strings, markup |
+| `kit/test/` | `kit.test.ts` runs the minified kit in happy-dom; `build.test.ts` checks budgets, the committed `dist/`, strings, markup |
 | `kit/README.md` | the site integration guide |
+| `dist/` | the three shipped files, minified — committed, written by the build: what a site vendors and the Hugo module mounts |
+| `go.mod`, `hugo.toml` | the Hugo module: its path, its minimum Hugo version and its mounts |
+| `adapters/hugo/` | the Hugo adapter: partials, sample strings, an example site, tests ([adapters/hugo/README.md](adapters/hugo/README.md)) |
 | `worker/src/index.ts` | the Worker: the two routes, the 404 fallback, the error answer, the cron handler |
 | `worker/src/record.ts`, `contract.ts`, `body.ts` | `POST /v1/record`: handler, record contract + rate-limit keys, bounded body reader |
 | `worker/src/records-db.ts`, `scheduled.ts` | the table's insert, prune and admin read; the hourly cron |
@@ -94,17 +106,24 @@ npm ci          # install (package-lock.json)
 npm run gate    # the local gate: sh scripts/pre-push-gate.sh
 ```
 
-The gate runs four steps and stops at the first failure (exit code 0 = push-ready):
+The gate runs five steps and stops at the first failure (exit code 0 = push-ready):
 
 1. **Typecheck** — `tsc --noEmit` over `worker/src/`.
-2. **Typecheck the tests** — `tsc -p tsconfig.test.json --noEmit` over `worker/test/`, `kit/test/` and
-   `vitest.config.ts`.
-3. **Tests** — `vitest run`: `kit/test/` and `worker/test/`. The Worker tests need a Node.js whose built-in
-   `node:sqlite` module needs no flag: 22.13 or later in the 22 line, 23.4 or later (`engines` in `package.json`).
-4. **Kit build + brotli budgets** — `node kit/build.mjs` writes `kit/dist/` and exits 1 when a file is over its brotli
-   budget: `head.js` 900 B, `kit.css` 2,200 B, `kit.js` 2,500 B (actual sizes in `kit/dist/sizes.json`).
+2. **Typecheck the tests** — `tsc -p tsconfig.test.json --noEmit` over `worker/test/`, `kit/test/`,
+   `adapters/*/test/` and `vitest.config.ts`.
+3. **Hugo** — `node adapters/hugo/test/hugo.mjs`: is Hugo 0.141.0 extended available through mise
+   (`mise x hugo-extended@0.141.0`)? Without it the Hugo adapter's build tests are skipped; the gate says so here and
+   in its last line.
+4. **Tests** — `vitest run`: `kit/test/`, `adapters/hugo/test/` and `worker/test/`. They fail while the committed
+   `dist/` or the Hugo adapter's generated files differ from a fresh build. The Worker tests need a Node.js whose
+   built-in `node:sqlite` module needs no flag: 22.13 or later in the 22 line, 23.4 or later (`engines` in
+   `package.json`).
+5. **Kit build + brotli budgets** — `node kit/build.mjs` writes `kit/dist/`, `dist/` and the Hugo adapter's generated
+   files, and exits 1 when a file is over its brotli budget: `head.js` 900 B, `kit.css` 2,200 B, `kit.js` 2,500 B
+   (actual sizes in `kit/dist/sizes.json`).
 
-Single steps: `npm run typecheck` (both type checks), `npm test`, `npm run build`.
+Single steps: `npm run typecheck` (both type checks), `npm test`, `npm run build`. After a change to `kit/src/` or
+`kit/templates/`, run `npm run build` and commit `dist/` and the regenerated files in `adapters/hugo/` with it.
 
 **Demo page.** After a build, serve `kit/dist/` as the web root with any static server and open `demo/index.html`
 (German) or `demo/en/index.html` (English). It is a fake host page with the kit emitted the way a site adapter emits it:
@@ -325,9 +344,10 @@ deleted or misconfigured application) is refused as well.
 
 1. **Pick a site id** and add it to `SITES` in the deployment's config (comma-separated, e.g.
    `"example-site,<new-id>"`), then deploy. Records naming an id that is not in `SITES` are dropped.
-2. **Vendor the built kit** (`npm run build`): `kit/dist/head.js` and `kit/dist/kit.css` are inlined in `<head>`,
-   `kit/dist/kit.js` is served as one same-origin deferred file. The build adds no fingerprint; the site's pipeline
-   fingerprints `kit.js`.
+2. **The built kit**: a Hugo site imports the module ([Use with Hugo](#use-with-hugo)), whose partials emit steps 3
+   and 4 and the kit.js tag. Any other site vendors the committed `dist/`: `dist/head.js` and `dist/kit.css` are
+   inlined in `<head>`, `dist/kit.js` is served as one same-origin deferred file. The build adds no fingerprint; the
+   site's pipeline fingerprints `kit.js`.
 3. **`<head>` order**: the site's Google Consent Mode defaults (all denied, no `url_passthrough`) → the config block
    `<script type="application/json" id="ck-config">` → the inline head snippet → the inline CSS.
 4. **First in `<body>`**: `kit/templates/banner.html`, rendered in the page language, with

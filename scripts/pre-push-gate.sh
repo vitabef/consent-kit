@@ -3,8 +3,12 @@
 # pre-push-gate.sh — the LOCAL quality gate of the consent-kit repo.
 #   1. typecheck  — tsc --noEmit (the Worker source)
 #   2. typecheck  — tsc -p tsconfig.test.json (the tests and vitest.config.ts)
-#   3. tests      — vitest run (kit in happy-dom + build checks, Worker in node)
-#   4. kit build  — node kit/build.mjs: minify, write kit/dist/, exit 1 over a brotli budget
+#   3. hugo       — is Hugo 0.141.0 extended here (mise)? Without it the Hugo adapter's build tests are
+#                   SKIPPED: said here and in the last line, never silently
+#   4. tests      — vitest run (kit in happy-dom + build checks with the drift guards of dist/ and the Hugo
+#                   adapter's generated files, the Hugo example-site build, Worker in node)
+#   5. kit build  — node kit/build.mjs: minify, write kit/dist/, dist/ and the Hugo adapter's generated files,
+#                   exit 1 over a brotli budget
 # Exit code: 0 = all green (push-ready), non-zero = a step failed (DO NOT push).
 # Usage: sh scripts/pre-push-gate.sh   (or: npm run gate)
 # =============================================================================
@@ -29,7 +33,22 @@ step() {  # step <label> <cmd...>
 
 step "Typecheck (tsc --noEmit)"            ./node_modules/.bin/tsc --noEmit
 step "Typecheck tests (tsconfig.test.json)" ./node_modules/.bin/tsc -p tsconfig.test.json --noEmit
+
+# The probe exits 0 (the Hugo build tests run), 3 (they are skipped: no Hugo 0.141.0 extended) or else (broken).
+printf '\n\033[1m▶ %s\033[0m\n' "Hugo 0.141.0 for the adapter's build tests"
+hugo_status=0
+node adapters/hugo/test/hugo.mjs || hugo_status=$?
+case "$hugo_status" in
+  0) hugo_skipped="" ;;
+  3) hugo_skipped=1 ;;
+  *) printf '\033[31m  ✗ the Hugo probe FAILED — DO NOT PUSH\033[0m\n'; exit 1 ;;
+esac
+
 step "Tests (vitest run)"                  ./node_modules/.bin/vitest run
 step "Kit build + brotli budgets"          node kit/build.mjs
 
-printf '\n\033[32m✓ pre-push gate GREEN — push-ready\033[0m\n'
+if [ -n "$hugo_skipped" ]; then
+  printf '\n\033[33m✓ pre-push gate GREEN — but WITHOUT the Hugo build tests: SKIPPED, no Hugo 0.141.0 extended here\033[0m\n'
+else
+  printf '\n\033[32m✓ pre-push gate GREEN — push-ready (Hugo build tests included)\033[0m\n'
+fi

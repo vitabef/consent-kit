@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="{{ site.Language.Lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ .Title }}</title>
+{{- /* 1. The site's Google Consent Mode defaults: everything denied, no url_passthrough (the kit sets it). */}}
+<script data-cfasync="false">
+  window.dataLayer = window.dataLayer || [];
+  function gtag() { dataLayer.push(arguments); }
+  gtag("consent", "default", {
+    ad_storage: "denied",
+    ad_user_data: "denied",
+    ad_personalization: "denied",
+    analytics_storage: "denied",
+    functionality_storage: "denied",
+    personalization_storage: "denied",
+    security_storage: "granted",
+    wait_for_update: 2000,
+  });
+  gtag("set", "ads_data_redaction", true);
+</script>
+{{- /* 2. The kit's config block, head snippet and styles: right after the defaults. */}}
+{{ partial "consent-kit/head.html" . }}
+</head>
+<body>
+{{- /* 3. The first layer and the settings dialog: the first thing in <body>. */}}
+{{ partial "consent-kit/banner.html" . }}
+<main>
+{{ block "main" . }}{{ end }}
+</main>
+<footer>
+  <nav>
+    {{- range .Translations }}
+    <a href="{{ .RelPermalink }}" hreflang="{{ .Lang }}" lang="{{ .Lang }}">{{ .Language.LanguageName }}</a>
+    {{- end }}
+    {{- /* The reopen link the first layer's text points to, on every page. */}}
+    <a href="{{ site.Params.consentKit.privacyUrl }}" data-ck-open>{{ i18n "cookieSettings" }}</a>
+  </nav>
+</footer>
+{{- /* 4. The deferred logic file: right before </body>. */}}
+{{ partial "consent-kit/script.html" . }}
+</body>
+</html>

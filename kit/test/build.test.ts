@@ -1,13 +1,14 @@
 // @vitest-environment node
 /**
  * Consent kit — the build artefacts: the brotli budgets of the three shipped files (~1.5 × the first build,
- * inside the hard ceilings head ≤ 1 KB, CSS ≤ 3 KB, JS ≤ 6 KB), the structure of the DE/EN sample strings
- * (the same keys — exactly the ones the reference markup needs, plus the `_note` — every one filled; the
- * wording itself is a site's own) and the reference markup / demo rendering without a missing placeholder.
+ * inside the hard ceilings head ≤ 1 KB, CSS ≤ 3 KB, JS ≤ 6 KB), the committed copy of those files in dist/ (the
+ * drift guard), the structure of the DE/EN sample strings (the same keys — exactly the ones the reference markup
+ * needs, plus the `_note` — every one filled; the wording itself is a site's own) and the reference markup / demo
+ * rendering without a missing placeholder.
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { BUDGETS, buildAssets, measure, renderBanner, renderDemo, strings } from "../build.mjs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { BUDGETS, COMMITTED_DIST, buildAssets, fileText, measure, renderBanner, renderDemo, strings } from "../build.mjs";
 
 type Assets = Record<"head.js" | "kit.css" | "kit.js", string>;
 let assets: Assets;
@@ -30,6 +31,16 @@ describe("budgets (brotli)", () => {
 		expect(BUDGETS["head.js"]).toBeLessThanOrEqual(1024);
 		expect(BUDGETS["kit.css"]).toBeLessThanOrEqual(3072);
 		expect(BUDGETS["kit.js"]).toBeLessThanOrEqual(6144);
+	});
+});
+
+describe("committed build output (dist/)", () => {
+	it.each(Object.keys(BUDGETS))("dist/%s is the committed copy of a fresh build (npm run build)", (name) => {
+		expect(readFileSync(join(COMMITTED_DIST, name), "utf8")).toBe(fileText(assets[name as keyof Assets]));
+	});
+
+	it("dist/ holds the three shipped files and nothing else (the Hugo module mounts the whole folder)", () => {
+		expect(readdirSync(COMMITTED_DIST).sort()).toEqual(Object.keys(BUDGETS).sort());
 	});
 });
 

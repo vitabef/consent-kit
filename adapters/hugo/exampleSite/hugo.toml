@@ -1,0 +1,48 @@
+# A tiny example site for the consent kit's Hugo module (adapters/hugo/README.md, Example site).
+# Build it with this checkout as the module (no go.mod needed then):
+#   HUGO_MODULE_REPLACEMENTS="github.com/vitabef/consent-kit -> <absolute path of this checkout>" \
+#     hugo -s adapters/hugo/exampleSite -d <output folder>
+baseURL = "https://www.example.com/"
+defaultContentLanguage = "de"
+disableKinds = ["taxonomy", "term", "rss", "sitemap", "robotstxt", "404"]
+
+[module]
+  [[module.imports]]
+    path = "github.com/vitabef/consent-kit"
+
+[languages.de]
+  weight = 1
+  languageName = "Deutsch"
+  title = "Beispiel-Website"
+  [languages.de.params.consentKit]
+    privacyUrl = "#datenschutz"
+    imprintUrl = "#impressum"
+
+[languages.en]
+  weight = 2
+  languageName = "English"
+  title = "Example website"
+  [languages.en.params.consentKit]
+    privacyUrl = "#privacy"
+    imprintUrl = "#imprint"
+
+[params.consentKit]
+  revision = 1
+  cookie = "ck_consent"
+  domain = "example.com"
+  endpoint = "https://consent.example.com/v1/record"
+  site = "example-site"
+  legacy = ["previous-tool-consent"]
+
+  [params.consentKit.cleanup.analytics]
+    cookies = ["_ga", "_ga_*"]
+
+  [params.consentKit.cleanup.marketing]
+    cookies = ["_gcl_*"]
+    localStorage = ["_gcl_ls"]
+
+  [params.consentKit.colors.light]
+    accent = "#0b5394"
+
+  [params.consentKit.colors.dark]
+    accent = "#9fc5e8"

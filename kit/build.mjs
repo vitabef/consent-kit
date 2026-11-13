@@ -2,23 +2,35 @@
 /**
  * consent-kit build — `node kit/build.mjs` (`npm run build`).
  *
- * Minifies the three shipped files with esbuild (the repo's devDependency) and writes kit/dist/:
+ * Minifies the three shipped files with esbuild (the repo's devDependency) and writes kit/dist/ (git-ignored):
  *   head.js     the inline head snippet (the adapter inlines it)
  *   kit.js      the deferred logic file (the adapter vendors and fingerprints it)
  *   kit.css     the styles (the adapter inlines them)
  *   sizes.json  raw / gzip / brotli bytes per file and the brotli budget (head ≤ 1 KB, CSS ≤ 3 KB, JS ≤ 6 KB)
  *   demo/       the fake host page rendered for DE (demo/index.html) and EN (demo/en/index.html)
+ * and the COMMITTED outputs — a test fails when a committed copy differs from a fresh build:
+ *   dist/head.js, dist/kit.js, dist/kit.css   the three shipped files once more, at the repository root: the
+ *                                             files a site vendors and the Hugo module mounts
+ *   adapters/hugo/…                           the Hugo adapter's generated partial and strings
+ *                                             (adapters/hugo/generate.mjs)
  * Exit 1 when a file is over its budget. The functions are exported so the tests run the SAME minified
  * bytes the sites ship, and render the same reference markup.
  */
 import { transform } from "esbuild";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(ROOT, "dist");
+/** The repository root. */
+export const REPO = path.dirname(ROOT);
+/** The committed copy of the three shipped files (repository root `dist/`). */
+export const COMMITTED_DIST = path.join(REPO, "dist");
+
+/** A shipped file on disk: the minified text and one newline — kit/dist/ and dist/ alike. */
+export const fileText = (text) => text + "\n";
 
 /** Brotli budgets in bytes: ~1.5 × the first build (608 / 1443 / 1672 B), so a real regression fails the
  *  test; the hard ceilings stay 1 KB / 3 KB / 6 KB (the kit sits on every page of a site). */
@@ -49,21 +61,40 @@ export function strings(lang) {
   return JSON.parse(read(`src/i18n/${lang}.json`));
 }
 
+/** The languages of the reference strings: every src/i18n/<lang>.json, sorted. */
+export const LANGS = readdirSync(path.join(ROOT, "src/i18n"))
+  .filter((name) => name.endsWith(".json"))
+  .map((name) => name.slice(0, -".json".length))
+  .sort();
+
+/** The placeholders of templates/banner.html that are the adapter's values; every other one is a string key. */
+export const ADAPTER_VALUES = ["privacyUrl", "imprintUrl", "endpoint", "site"];
+
 const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** Drops the developer comments; keeps the ck: markers. */
 const stripComments = (html) => html.replace(/<!--(?!ck:)[\s\S]*?-->\n?/g, "");
 
+/** Replaces every {{key}} placeholder with `value(key)`. */
+export function replacePlaceholders(html, value) {
+  return html.replace(/\{\{\s*([A-Za-z]\w*)\s*\}\}/g, (_, key) => value(key));
+}
+
 /** Fills every {{key}} from `values`; a placeholder without a value is an error, never an empty string. */
 function fill(html, values, where) {
-  return html.replace(/\{\{\s*([A-Za-z]\w*)\s*\}\}/g, (_, key) => {
+  return replacePlaceholders(html, (key) => {
     if (!(key in values)) throw new Error(`${where}: no value for {{${key}}}`);
     return escapeHtml(String(values[key]));
   });
 }
 
+/** templates/banner.html without its developer comment: the markup every adapter renders or generates from. */
+export function bannerTemplate() {
+  return stripComments(read("templates/banner.html"));
+}
+
 /** templates/banner.html for a language — what an adapter renders (vars: privacyUrl, imprintUrl, endpoint, site). */
 export function renderBanner(lang, vars) {
-  return fill(stripComments(read("templates/banner.html")), { ...strings(lang), ...vars }, "templates/banner.html");
+  return fill(bannerTemplate(), { ...strings(lang), ...vars }, "templates/banner.html");
 }
 
 /** The demo's kit config. A site's production values — the config's `revision` and cookie `domain`, layer 1's
@@ -135,10 +166,12 @@ export function renderDemo(lang, assets) {
 async function main() {
   const assets = await buildAssets();
   mkdirSync(path.join(DIST, "demo", "en"), { recursive: true });
+  mkdirSync(COMMITTED_DIST, { recursive: true });
   const sizes = {};
   let over = false;
   for (const [name, text] of Object.entries(assets)) {
-    writeFileSync(path.join(DIST, name), text + "\n");
+    writeFileSync(path.join(DIST, name), fileText(text));
+    writeFileSync(path.join(COMMITTED_DIST, name), fileText(text));
     const m = measure(text);
     sizes[name] = { ...m, budgetBrotli: BUDGETS[name] };
     if (m.brotli > BUDGETS[name]) over = true;
@@ -148,12 +181,24 @@ async function main() {
   writeFileSync(path.join(DIST, "demo", "index.html"), renderDemo("de", assets));
   writeFileSync(path.join(DIST, "demo", "en", "index.html"), renderDemo("en", assets));
   writeFileSync(path.join(DIST, "demo", "fake-analytics.js"), read("demo/fake-analytics.js"));
+  // imported here, not at the top: the generator imports this file (which has finished evaluating by now)
+  const hugo = await import("../adapters/hugo/generate.mjs");
+  for (const [rel, text] of Object.entries(hugo.generate())) {
+    const file = path.join(REPO, "adapters", "hugo", rel);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, text);
+  }
   if (over) {
     console.error("consent-kit: a file is over its brotli budget (see above)");
     process.exit(1);
   }
 }
 
+// Not a top-level await: main() imports the Hugo generator, which imports this module — that import must find
+// this module evaluated, not waiting for main().
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
-  await main();
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 }
