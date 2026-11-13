@@ -553,6 +553,12 @@ for (const { version, probe } of HUGOS) {
 				'[languages.de.params.consentKit]\nprivacyUrl = "#"\n',
 				'site.Params.consentKit.privacyUrl must be an https:// URL, a path that starts with one "/" or a #fragment, not "#" (the language "de")',
 			],
+			[
+				"privacy-fragment-colon",
+				"a fragment with a colon (html/template would read #abschnitt as a scheme and write #ZgotmplZ)",
+				'[languages.de.params.consentKit]\nprivacyUrl = "#abschnitt:1"\n',
+				'site.Params.consentKit.privacyUrl must be an https:// URL, a path that starts with one "/" or a #fragment, not "#abschnitt:1" (the language "de")',
+			],
 			["privacy-empty", "an empty privacy link", '[languages.de.params.consentKit]\nprivacyUrl = ""\n', 'site.Params.consentKit.privacyUrl must be set for the language "de"'],
 			["legacy-name", "a legacy cookie name with a space", '[params.consentKit]\nlegacy = ["previous tool"]\n', "site.Params.consentKit.legacy: previous tool is not a cookie name"],
 			["legacy-string", "legacy of the wrong type", '[params.consentKit]\nlegacy = ""\n', 'site.Params.consentKit.legacy must be a list of cookie names, not "" (string)'],

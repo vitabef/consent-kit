@@ -7,9 +7,8 @@ Hugo translations. What the kit does, every attribute, the cookie, the event and
 
 ## Requirements
 
-- Hugo 0.141.0 or later (the module's `hugoVersion`), tested with 0.141.0 and 0.169.0. The standard edition is
-  enough: the module uses nothing of the extended one (the tests build with the extended edition; the standard 0.141.0
-  builds the example site to the same bytes).
+- Hugo 0.141.0 or later (the module's `hugoVersion`), tested with 0.141.0 and 0.169.0: the test suite runs on the
+  extended builds of both. The module itself needs no feature of the extended edition.
 - Go, which Hugo Modules use to download and pin a module (`hugo mod get`); this module's `go.mod` asks for Go 1.20
   or later. And a site that is a module itself (`hugo mod init <the site's module path>` writes its `go.mod`).
 
@@ -158,8 +157,9 @@ Where they go: `revision`, `cookie`, `domain`, `categories`, `cleanup` and `lega
 selectors (`data-bs-theme`, then `prefers-color-scheme`).
 
 The two links take one of the three forms in the table; anything else fails the build: a `javascript:` or `tel:`
-value (html/template would write the dead link `#ZgotmplZ`), `http://`, a relative path, a path that starts with `//`
-or `/\` (to a browser, another host), a value with whitespace, a quote, `<`, `>` or a backslash. Neither link is
+value (html/template would write the dead link `#ZgotmplZ`), a `#fragment` with a colon (in `#abschnitt:1`,
+html/template reads `#abschnitt` as a scheme: `#ZgotmplZ` again), `http://`, a relative path, a path that starts with
+`//` or `/\` (to a browser, another host), a value with whitespace, a quote, `<`, `>` or a backslash. Neither link is
 written as given: html/template writes it URL-normalised, a character outside the URL syntax percent-encoded —
 `/datenschutzerklärung/` becomes `/datenschutzerkl%c3%a4rung/`, the same address.
 
