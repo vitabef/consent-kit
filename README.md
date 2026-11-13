@@ -111,9 +111,9 @@ The gate runs five steps and stops at the first failure (exit code 0 = push-read
 1. **Typecheck** — `tsc --noEmit` over `worker/src/`.
 2. **Typecheck the tests** — `tsc -p tsconfig.test.json --noEmit` over `worker/test/`, `kit/test/`,
    `adapters/*/test/` and `vitest.config.ts`.
-3. **Hugo** — `node adapters/hugo/test/hugo.mjs`: is Hugo 0.141.0 extended available through mise
-   (`mise x hugo-extended@0.141.0`)? Without it the Hugo adapter's build tests are skipped; the gate says so here and
-   in its last line.
+3. **Hugo** — `node adapters/hugo/test/hugo.mjs`: are Hugo 0.141.0 extended (the module's minimum) and 0.169.0
+   extended (the newest tested) available through mise (`mise x hugo-extended@<version>`)? The Hugo adapter's build
+   tests run with each; without one, its tests are skipped, and the gate says so here and in its last line.
 4. **Tests** — `vitest run`: `kit/test/`, `adapters/hugo/test/` and `worker/test/`. They fail while the committed
    `dist/` or the Hugo adapter's generated files differ from a fresh build. The Worker tests need a Node.js whose
    built-in `node:sqlite` module needs no flag: 22.13 or later in the 22 line, 23.4 or later (`engines` in

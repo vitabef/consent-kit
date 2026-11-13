@@ -10,18 +10,22 @@ disableKinds = ["taxonomy", "term", "rss", "sitemap", "robotstxt", "404"]
   [[module.imports]]
     path = "github.com/vitabef/consent-kit"
 
+# The language switcher's names are site params, the same in every Hugo version tested: Hugo 0.158.0 deprecated
+# `languageName` (for `label`), and a deprecated key warns in every build.
 [languages.de]
   weight = 1
-  languageName = "Deutsch"
   title = "Beispiel-Website"
+  [languages.de.params]
+    languageLabel = "Deutsch"
   [languages.de.params.consentKit]
     privacyUrl = "#datenschutz"
     imprintUrl = "#impressum"
 
 [languages.en]
   weight = 2
-  languageName = "English"
   title = "Example website"
+  [languages.en.params]
+    languageLabel = "English"
   [languages.en.params.consentKit]
     privacyUrl = "#privacy"
     imprintUrl = "#imprint"

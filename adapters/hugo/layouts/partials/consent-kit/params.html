@@ -1,8 +1,9 @@
 {{- /* consent-kit: site.Params.consentKit, validated (adapters/hugo/README.md, Parameters). Internal: head.html and
   banner.html call it as partialCached "consent-kit/params.html" . site.Language.Lang. Every invalid value fails
-  the build (errorf); the checks run once per language. Hugo lowercases parameter keys, so the config block's
-  keys are written out here with the kit's own spelling (localStorage). Returns a dict: config (the config
-  block's object), css (the colour overrides), endpoint, site, privacyUrl, imprintUrl. */ -}}
+  the build (errorf) — a value of the wrong type too, false, 0 and "" included: an optional key that is set is
+  checked (isset), never skipped as empty; the checks run once per language. Hugo lowercases parameter keys, so the
+  config block's keys are written out here with the kit's own spelling (localStorage). Returns a dict: config (the
+  config block's object), css (the colour overrides), endpoint, site, privacyUrl, imprintUrl. */ -}}
 {{- $p := site.Params.consentKit -}}
 {{- if not (reflect.IsMap $p) -}}
   {{- errorf "consent-kit: site.Params.consentKit is missing (adapters/hugo/README.md, Parameters)" -}}
@@ -36,13 +37,13 @@
   {{- errorf `consent-kit: site.Params.consentKit.cookie must be a cookie name (letters, digits, "_", ".", "-"), not %v` $p.cookie -}}
 {{- end -}}
 
-{{- /* domain (optional): the registrable domain every cookie deletion is repeated on */ -}}
+{{- /* domain (optional): the registrable domain every cookie deletion is repeated on; "" = none */ -}}
 {{- $domain := "" -}}
-{{- with $p.domain -}}
-  {{- if and (eq (printf "%T" .) "string") (findRE `^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?$` .) -}}
-    {{- $domain = . -}}
+{{- if isset $p "domain" -}}
+  {{- if not (and (eq (printf "%T" $p.domain) "string") (or (not $p.domain) (findRE `^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?$` $p.domain))) -}}
+    {{- errorf `consent-kit: site.Params.consentKit.domain must be a lower-case domain such as "example.com" (no scheme, port or leading dot), not %#v (%T)` $p.domain $p.domain -}}
   {{- else -}}
-    {{- errorf `consent-kit: site.Params.consentKit.domain must be a lower-case domain such as "example.com" (no scheme, port or leading dot), not %v` . -}}
+    {{- $domain = $p.domain -}}
   {{- end -}}
 {{- end -}}
 
@@ -56,38 +57,45 @@
   {{- $endpoint = $p.endpoint -}}
 {{- end -}}
 
-{{- /* site: the site id, one of the records service's SITES (required with an endpoint) */ -}}
+{{- /* site: the site id, one of the records service's SITES (required with an endpoint); "" = none */ -}}
 {{- $site := "" -}}
-{{- with $p.site -}}
-  {{- if and (eq (printf "%T" .) "string") (findRE `^[A-Za-z0-9_.-]+$` .) -}}
-    {{- $site = . -}}
+{{- if isset $p "site" -}}
+  {{- if not (and (eq (printf "%T" $p.site) "string") (or (not $p.site) (findRE `^[A-Za-z0-9_.-]+$` $p.site))) -}}
+    {{- errorf `consent-kit: site.Params.consentKit.site must be a site id (letters, digits, "_", ".", "-"), not %#v (%T)` $p.site $p.site -}}
   {{- else -}}
-    {{- errorf `consent-kit: site.Params.consentKit.site must be a site id (letters, digits, "_", ".", "-"), not %v` . -}}
+    {{- $site = $p.site -}}
   {{- end -}}
 {{- end -}}
 {{- if and $endpoint (not $site) -}}
   {{- errorf "consent-kit: site.Params.consentKit.site is missing: the endpoint needs the site id" -}}
 {{- end -}}
 
-{{- /* privacyUrl, imprintUrl: the two links of both layers, in the page language */ -}}
+{{- /* privacyUrl, imprintUrl: the two links of both layers, in the page language — an https:// URL, a path that
+  starts with one "/" (never "//" or "/\": a browser reads either as another host), or a #fragment; html/template
+  writes the value URL-normalised (a character outside the URL syntax percent-encoded: "ä" as "%c3%a4") */ -}}
+{{- $link := `^(https://[A-Za-z0-9.-]+(:[0-9]+)?([/?#][^\s"'<>\\]*)?|/([^/\\\s"'<>][^\s"'<>\\]*)?|#[^\s"'<>\\]+)$` -}}
 {{- $privacyUrl := "" -}}
-{{- if and (eq (printf "%T" $p.privacyUrl) "string") $p.privacyUrl -}}
-  {{- $privacyUrl = $p.privacyUrl -}}
-{{- else -}}
+{{- if not (and (eq (printf "%T" $p.privacyUrl) "string") $p.privacyUrl) -}}
   {{- errorf "consent-kit: site.Params.consentKit.privacyUrl must be set for the language %q: the privacy policy's URL" site.Language.Lang -}}
+{{- else if not (findRE $link $p.privacyUrl) -}}
+  {{- errorf `consent-kit: site.Params.consentKit.privacyUrl must be an https:// URL, a path that starts with one "/" or a #fragment, not %q (the language %q)` $p.privacyUrl site.Language.Lang -}}
+{{- else -}}
+  {{- $privacyUrl = $p.privacyUrl -}}
 {{- end -}}
 {{- $imprintUrl := "" -}}
-{{- if and (eq (printf "%T" $p.imprintUrl) "string") $p.imprintUrl -}}
-  {{- $imprintUrl = $p.imprintUrl -}}
-{{- else -}}
+{{- if not (and (eq (printf "%T" $p.imprintUrl) "string") $p.imprintUrl) -}}
   {{- errorf "consent-kit: site.Params.consentKit.imprintUrl must be set for the language %q: the imprint's URL" site.Language.Lang -}}
+{{- else if not (findRE $link $p.imprintUrl) -}}
+  {{- errorf `consent-kit: site.Params.consentKit.imprintUrl must be an https:// URL, a path that starts with one "/" or a #fragment, not %q (the language %q)` $p.imprintUrl site.Language.Lang -}}
+{{- else -}}
+  {{- $imprintUrl = $p.imprintUrl -}}
 {{- end -}}
 
 {{- /* legacy (optional): a previous consent tool's cookie names, deleted on every page load */ -}}
 {{- $legacy := slice -}}
-{{- with $p.legacy -}}
-  {{- if reflect.IsSlice . -}}
-    {{- range . -}}
+{{- if isset $p "legacy" -}}
+  {{- if reflect.IsSlice $p.legacy -}}
+    {{- range $p.legacy -}}
       {{- if and (eq (printf "%T" .) "string") (findRE `^[A-Za-z0-9_.-]+$` .) -}}
         {{- $legacy = $legacy | append . -}}
       {{- else -}}
@@ -95,16 +103,16 @@
       {{- end -}}
     {{- end -}}
   {{- else -}}
-    {{- errorf "consent-kit: site.Params.consentKit.legacy must be a list of cookie names" -}}
+    {{- errorf "consent-kit: site.Params.consentKit.legacy must be a list of cookie names, not %#v (%T)" $p.legacy $p.legacy -}}
   {{- end -}}
 {{- end -}}
 
 {{- /* categories (optional): kit category → the data-consent value it activates; default: the same names */ -}}
 {{- $analytics := "analytics" -}}
 {{- $marketing := "marketing" -}}
-{{- with $p.categories -}}
-  {{- if reflect.IsMap . -}}
-    {{- range $category, $value := . -}}
+{{- if isset $p "categories" -}}
+  {{- if reflect.IsMap $p.categories -}}
+    {{- range $category, $value := $p.categories -}}
       {{- if not (in (slice "analytics" "marketing") $category) -}}
         {{- errorf "consent-kit: site.Params.consentKit.categories.%s is not a category (analytics, marketing)" $category -}}
       {{- else if not (and (eq (printf "%T" $value) "string") (findRE `^[A-Za-z0-9_-]+$` $value)) -}}
@@ -116,16 +124,16 @@
       {{- end -}}
     {{- end -}}
   {{- else -}}
-    {{- errorf "consent-kit: site.Params.consentKit.categories must be a table: analytics, marketing" -}}
+    {{- errorf "consent-kit: site.Params.consentKit.categories must be a table (analytics, marketing), not %#v (%T)" $p.categories $p.categories -}}
   {{- end -}}
 {{- end -}}
 
 {{- /* cleanup (optional): per category, the cookies (exact names, or prefixes ending in "*") and localStorage
   keys a category that is not granted deletes */ -}}
 {{- $cleanup := dict -}}
-{{- with $p.cleanup -}}
-  {{- if reflect.IsMap . -}}
-    {{- range $category, $rule := . -}}
+{{- if isset $p "cleanup" -}}
+  {{- if reflect.IsMap $p.cleanup -}}
+    {{- range $category, $rule := $p.cleanup -}}
       {{- if not (in (slice "analytics" "marketing") $category) -}}
         {{- errorf "consent-kit: site.Params.consentKit.cleanup.%s is not a category (analytics, marketing)" $category -}}
       {{- else if not (reflect.IsMap $rule) -}}
@@ -163,17 +171,21 @@
       {{- end -}}
     {{- end -}}
   {{- else -}}
-    {{- errorf "consent-kit: site.Params.consentKit.cleanup must be a table: analytics, marketing" -}}
+    {{- errorf "consent-kit: site.Params.consentKit.cleanup must be a table (analytics, marketing), not %#v (%T)" $p.cleanup $p.cleanup -}}
   {{- end -}}
 {{- end -}}
 
-{{- /* colors (optional): the kit's colour tokens per theme, written after kit.css with its theme selectors */ -}}
+{{- /* colors (optional): the kit's colour tokens per theme, written after kit.css with its theme selectors. A colour
+  is a #hex (3, 4, 6 or 8 digits), a colour name (letters only) or one colour function whose parentheses hold
+  letters, digits, spaces and . % , / - only: a value can neither leave its declaration (no ; { } : quote, no
+  parenthesis left open) nor load anything (no url(), image-set() or other nested function, no var()). */ -}}
+{{- $colour := `^(#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})|[A-Za-z]+|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([A-Za-z0-9 .%,/-]*\))$` -}}
 {{- $css := "" -}}
-{{- with $p.colors -}}
-  {{- if reflect.IsMap . -}}
+{{- if isset $p "colors" -}}
+  {{- if reflect.IsMap $p.colors -}}
     {{- $light := "" -}}
     {{- $dark := "" -}}
-    {{- range $theme, $tokens := . -}}
+    {{- range $theme, $tokens := $p.colors -}}
       {{- if not (in (slice "light" "dark") $theme) -}}
         {{- errorf "consent-kit: site.Params.consentKit.colors.%s is not a theme (light, dark)" $theme -}}
       {{- else if not (reflect.IsMap $tokens) -}}
@@ -183,8 +195,8 @@
         {{- range $token, $value := $tokens -}}
           {{- if not (in (slice "bg" "fg" "line" "accent" "wash" "off" "shade") $token) -}}
             {{- errorf "consent-kit: site.Params.consentKit.colors.%s.%s is not a colour token (bg, fg, line, accent, wash, off, shade)" $theme $token -}}
-          {{- else if not (and (eq (printf "%T" $value) "string") (findRE `^[A-Za-z0-9#%(),./ -]+$` $value)) -}}
-            {{- errorf "consent-kit: site.Params.consentKit.colors.%s.%s must be a CSS colour (letters, digits, spaces and # %% ( ) , . / -), not %v" $theme $token $value -}}
+          {{- else if not (and (eq (printf "%T" $value) "string") (findRE $colour $value)) -}}
+            {{- errorf "consent-kit: site.Params.consentKit.colors.%s.%s must be a CSS colour — a #hex (3, 4, 6 or 8 digits), a colour name, or rgb(), rgba(), hsl(), hsla(), hwb(), lab(), lch(), oklab(), oklch() or color() without a nested function — not %v" $theme $token $value -}}
           {{- else -}}
             {{- $declarations = printf "%s--ck-cc-%s:%s;" $declarations $token $value -}}
           {{- end -}}
@@ -199,7 +211,7 @@
       {{- $css = printf `%s[data-bs-theme="dark"] .ck-cc,[data-bs-theme="dark"] .ck-cd{%s}@media (prefers-color-scheme:dark){:root:not([data-bs-theme="light"]) .ck-cc,:root:not([data-bs-theme="light"]) .ck-cd{%s}}` $css . . -}}
     {{- end -}}
   {{- else -}}
-    {{- errorf "consent-kit: site.Params.consentKit.colors must be a table: light, dark" -}}
+    {{- errorf "consent-kit: site.Params.consentKit.colors must be a table (light, dark), not %#v (%T)" $p.colors $p.colors -}}
   {{- end -}}
 {{- end -}}
 

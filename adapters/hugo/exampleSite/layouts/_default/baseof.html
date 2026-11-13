@@ -32,7 +32,7 @@
 <footer>
   <nav>
     {{- range .Translations }}
-    <a href="{{ .RelPermalink }}" hreflang="{{ .Lang }}" lang="{{ .Lang }}">{{ .Language.LanguageName }}</a>
+    <a href="{{ .RelPermalink }}" hreflang="{{ .Lang }}" lang="{{ .Lang }}">{{ .Site.Params.languageLabel }}</a>
     {{- end }}
     {{- /* The reopen link the first layer's text points to, on every page. */}}
     <a href="{{ site.Params.consentKit.privacyUrl }}" data-ck-open>{{ i18n "cookieSettings" }}</a>

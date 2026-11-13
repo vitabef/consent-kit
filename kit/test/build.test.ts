@@ -42,6 +42,11 @@ describe("committed build output (dist/)", () => {
 	it("dist/ holds the three shipped files and nothing else (the Hugo module mounts the whole folder)", () => {
 		expect(readdirSync(COMMITTED_DIST).sort()).toEqual(Object.keys(BUDGETS).sort());
 	});
+
+	it("dist/kit.css holds no </style and dist/head.js no </script, in any case: the Hugo adapter inlines them unescaped (safeCSS, safeJS)", () => {
+		expect(readFileSync(join(COMMITTED_DIST, "kit.css"), "utf8")).not.toMatch(/<\/style/i);
+		expect(readFileSync(join(COMMITTED_DIST, "head.js"), "utf8")).not.toMatch(/<\/script/i);
+	});
 });
 
 describe("reference strings (samples)", () => {

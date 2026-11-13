@@ -7,9 +7,11 @@ Hugo translations. What the kit does, every attribute, the cookie, the event and
 
 ## Requirements
 
-- Hugo 0.141.0 or later (the module's `hugoVersion`); the tests build with 0.141.0 extended.
-- Go, which Hugo Modules use to download and pin a module, and a site that is a module itself (`hugo mod init <the
-  site's module path>` writes its `go.mod`).
+- Hugo 0.141.0 or later (the module's `hugoVersion`), tested with 0.141.0 and 0.169.0. The standard edition is
+  enough: the module uses nothing of the extended one (the tests build with the extended edition; the standard 0.141.0
+  builds the example site to the same bytes).
+- Go, which Hugo Modules use to download and pin a module (`hugo mod get`); this module's `go.mod` asks for Go 1.20
+  or later. And a site that is a module itself (`hugo mod init <the site's module path>` writes its `go.mod`).
 
 ## Import and version
 
@@ -91,11 +93,50 @@ The nonce goes on the inline head snippet, the `<style>` and kit.js; not on the 
 does not govern. A nonce must be new for every response: on a static site, a placeholder that the server replaces in
 each response. The record goes to the endpoint's host: allow it in `connect-src` (kit/README.md, The record).
 
+## Minification
+
+`hugo --minify` (or `minifyOutput = true` under `[minify]`) runs every page through Hugo's minifier, and the minifier
+rewrites the module's inline parts as well:
+
+- the head snippet: minified once more — other variable names, other bytes than `dist/head.js` — and, at the
+  minifier's default ECMAScript version, with newer syntax than the kit's ES2017 (kit/README.md, Build output):
+  `catch(h){}` becomes `catch{}`, an ES2019 form that an ES2017 engine cannot parse;
+- the inline styles: the same rules in other bytes than `dist/kit.css`;
+- the config block: the same JSON, its escapes of `<`, `>` and `&` kept;
+- kit.js: untouched — a file of its own, published as built, so its integrity holds.
+
+What the head snippet does stays the same: the tests build the example site with `--minify` and run its rewritten
+head snippet over a stored choice. To keep it ES2017, set the minifier's JavaScript version in the site's
+configuration:
+
+```toml
+[minify.tdewolff.js]
+  version = 2017
+```
+
+To keep the head snippet and the styles byte for byte as shipped, switch the JavaScript and CSS minifiers off — for
+the whole site, `resources.Minify` of the site's own files included:
+
+```toml
+[minify]
+  disableJS = true
+  disableCSS = true
+```
+
+Leave `[minify.tdewolff.json] precision` at its default, 0: a precision rounds the config block's numbers —
+`precision = 1` writes `revision = 123456` as `1e5`, and no stored choice counts any more.
+
+A Content Security Policy of a site that minifies allows the inline head snippet and styles with the nonce (above),
+not with a hash: a hash of `dist/head.js` or `dist/kit.css` no longer matches the bytes the minifier writes. Only
+with the two minifiers off does a hash of the shipped files hold.
+
 ## Parameters
 
 `site.Params.consentKit`, checked when the site is built: a missing required key, an unknown key, a wrong type or
-an invalid value fails the build with an error that starts with `consent-kit:`. Values for one language go to
-`[languages.<lang>.params.consentKit]`; Hugo merges them over `[params.consentKit]`.
+an invalid value fails the build with an error that starts with `consent-kit:`. An optional key is left out or set
+to a valid value: `colors = false` or `legacy = ""` fails too (for `domain` and `site`, `""` is the same as left
+out). Values for one language go to `[languages.<lang>.params.consentKit]`; Hugo merges them over
+`[params.consentKit]`.
 
 | Key | Required | Example | Meaning |
 |---|---|---|---|
@@ -104,8 +145,8 @@ an invalid value fails the build with an error that starts with `consent-kit:`. 
 | `domain` | no — a lower-case domain, no scheme, port or leading dot | `"example.com"` | the registrable domain: every cookie deletion is written once more with `Domain=<domain>` |
 | `endpoint` | yes — an `https://` URL with a path, or `""` | `"https://consent.example.com/v1/record"` | where the records go; `""` = no records |
 | `site` | with an endpoint — letters, digits, `_`, `.`, `-` | `"example-site"` | the site id in every record: one of the records service's `SITES` |
-| `privacyUrl` | yes, for every language | `"/datenschutz/"` | the privacy policy, linked in both layers, written as given |
-| `imprintUrl` | yes, for every language | `"/impressum/"` | the imprint, linked in both layers, written as given |
+| `privacyUrl` | yes, for every language — an `https://` URL, a path that starts with one `/`, or a `#fragment` | `"/datenschutz/"` | the privacy policy, linked in both layers |
+| `imprintUrl` | yes, for every language — the same three forms | `"/impressum/"` | the imprint, linked in both layers |
 | `legacy` | no — a list of cookie names | `["previous-tool-consent"]` | a previous consent tool's cookies, deleted on every page load |
 | `categories` | no | `{ analytics = "stats" }` | kit category (`analytics`, `marketing`) → the `data-consent` value it activates; a category left out keeps its own name |
 | `cleanup` | no | see below | per category, what is deleted while it is not granted: `cookies` (exact names, or prefixes ending in `*`) and `localStorage` keys |
@@ -114,8 +155,20 @@ an invalid value fails the build with an error that starts with `consent-kit:`. 
 Where they go: `revision`, `cookie`, `domain`, `categories`, `cleanup` and `legacy` make the config block
 (kit/README.md, The config block); `endpoint` and `site` become the first layer's `data-endpoint` and `data-site`;
 `privacyUrl` and `imprintUrl` the links of both layers; `colors` a rule after kit.css with the kit's own theme
-selectors (`data-bs-theme`, then `prefers-color-scheme`). A colour is letters, digits, spaces and `# % ( ) , . / -`
-(`#0b5394`, `rgb(29 65 99 / 0.1)`), so no value can leave its declaration.
+selectors (`data-bs-theme`, then `prefers-color-scheme`).
+
+The two links take one of the three forms in the table; anything else fails the build: a `javascript:` or `tel:`
+value (html/template would write the dead link `#ZgotmplZ`), `http://`, a relative path, a path that starts with `//`
+or `/\` (to a browser, another host), a value with whitespace, a quote, `<`, `>` or a backslash. Neither link is
+written as given: html/template writes it URL-normalised, a character outside the URL syntax percent-encoded —
+`/datenschutzerklärung/` becomes `/datenschutzerkl%c3%a4rung/`, the same address.
+
+A colour is a `#` hex colour of 3, 4, 6 or 8 digits (`#0b5394`), a colour name of letters only (`rebeccapurple`),
+or one of the colour functions `rgb()`, `rgba()`, `hsl()`, `hsla()`, `hwb()`, `lab()`, `lch()`, `oklab()`,
+`oklch()`, `color()` with letters, digits, spaces and `. % , / -` between its two parentheses
+(`rgb(29 65 99 / 0.1)`, `oklch(0.6 0.1 250 / 50%)`). Nothing else passes — no parenthesis left open, no `;`, `{`,
+`}`, `:` or quote, no `url()`, `image-set()`, `var()` or other nested function — so a value can neither leave its
+declaration nor make the browser load anything before a choice.
 
 The example site's block:
 
@@ -215,16 +268,30 @@ a local copy to send no records at all.
 Never edit a generated file: change the kit's source and run `npm run build`; a test fails while a committed copy
 differs from a fresh generation.
 
+## Releasing
+
+A version is a git tag `vX.Y.Z` that equals `version` in `package.json`:
+
+1. The change that makes the release raises `version` in `package.json` to `X.Y.Z`.
+2. After it is merged, tag that commit on `main` with `vX.Y.Z` and push the tag.
+3. Sites move to it with `hugo mod get github.com/vitabef/consent-kit@vX.Y.Z` and commit their `go.mod` and `go.sum`
+   (Import and version).
+
 ## Tests
 
 `adapters/hugo/test/hugo.test.ts`, part of `npm test` and the gate:
 
-- the generated files are the committed copies of a fresh generation;
-- with Hugo 0.141.0 (`mise x hugo-extended@0.141.0`) against this checkout: the module's mounts are exactly the four
-  above; the example site carries the config block, the inline head snippet and styles with the colour overrides,
-  the first layer and the dialog of both languages structurally equal to the reference rendering, and kit.js
-  fingerprinted with a matching integrity; a scratch site proves the nonce, a site's own string winning and the
-  optional parameters left out; invalid parameters and a default language without strings fail the build.
+- the generated files are the committed copies of a fresh generation, and their YAML keeps every string and comment
+  on its own line;
+- with Hugo 0.141.0, the module's minimum, and with 0.169.0, the newest one tested (`mise x hugo-extended@<version>`;
+  `adapters/hugo/test/hugo.mjs` names both), each against this checkout: the module's mounts are exactly the four
+  above; the example site builds without a warning and carries the config block, the inline head snippet and styles
+  with the colour overrides, the first layer and the dialog of both languages structurally equal to the reference
+  rendering, and kit.js fingerprinted with a matching integrity; every accepted colour form reaches the overrides;
+  built with `--minify`, its rewritten head snippet still reads a stored choice in happy-dom, and the minifier
+  settings above do what Minification says; scratch sites prove the nonce, a site's own string winning, the link
+  forms, the optional parameters left out and a config value that tries to close the config block; every check of
+  the parameters, and a default language without strings, fails the build with its message.
 
-Without Hugo 0.141.0 extended in mise, the Hugo builds are skipped with a warning, and the gate says so in its last
-line. `node adapters/hugo/test/hugo.mjs` prints whether they run.
+Without one of the two Hugo versions extended in mise, its builds are skipped with a warning, and the gate says so
+in its last line. `node adapters/hugo/test/hugo.mjs` prints which run.
