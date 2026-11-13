@@ -1,0 +1,81 @@
+#:schema node_modules/wrangler/config-schema.json
+# The consent records Worker: POST /v1/record (the kit's decision records), GET /admin (daily counts,
+# behind Cloudflare Access), an hourly retention prune. Everything else answers 404. README.md has the
+# deploy and setup steps.
+#
+# The REFERENCE configuration, with example values: the route, the database and the site id are
+# placeholders that keep the tests and `wrangler deploy --dry-run` working — this file deploys nothing
+# real. A real deployment copies this file into a private config of its own (its host, its database, its
+# site ids, its Access values; `main` and `migrations_dir` pointing back at this repository) and passes
+# that file with `--config` to every Wrangler command (README.md § Deploy).
+name = "consent-kit"
+main = "worker/src/index.ts"
+# The runtime the records code was built and tested with.
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+# Reachable ONLY on its custom domain: no *.workers.dev URL, no version preview URLs.
+workers_dev = false
+preview_urls = false
+routes = [{ pattern = "consent.example.com", custom_domain = true }]
+
+# The decision records (`consent_records`) — a D1 database created in the EU jurisdiction
+# (`wrangler d1 create <name> --jurisdiction eu`). The name and the all-zero id are placeholders: a
+# deployment puts its own database's name and id here. Migrations: migrations/ (additive).
+# OPTIONAL in code (worker/src/env.ts): a missing binding drops records, the prune and the admin page
+# read nothing.
+[[d1_databases]]
+binding = "CONSENT_DB"
+database_name = "consent-records"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# The three brakes of POST /v1/record, asked in this order and stopping at the first refusal (per
+# Cloudflare location, eventually consistent; worker/src/record.ts states the trade-off). DENY by default
+# in code: any of the three missing or failing drops the record. namespace_id is account-unique — a
+# deployment uses ids that no other Worker in its account uses.
+# 1. per client: `consent:<IPv4 address | IPv6 /64>`.
+[[ratelimits]]
+name = "CONSENT_ADDR_LIMIT"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+# 2. per IPv6 /48 (IPv6 only): `consent48:<first three hextets>` — above the per-client limit, because a
+#    carrier /48 is shared by many subscribers.
+[[ratelimits]]
+name = "CONSENT_PREFIX_LIMIT"
+namespace_id = "1002"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60
+
+# 3. the GLOBAL circuit breaker, ONE key (`consent:all`), asked last — caps how fast a distributed flood
+#    can write rows.
+[[ratelimits]]
+name = "CONSENT_RATE_LIMIT"
+namespace_id = "1003"
+
+  [ratelimits.simple]
+  limit = 300
+  period = 60
+
+# Hourly: the 3-year retention prune (at most 5,000 rows a tick). Off the top of the hour.
+[triggers]
+crons = ["17 * * * *"]
+
+[vars]
+# The site ids a record may name (comma-separated) — the kit's `data-site` on each site; `example-site`
+# is a placeholder. Empty = every record is dropped (deny by default).
+SITES = "example-site"
+# GET /admin needs a valid Cloudflare Access token for this team domain and application audience (AUD
+# tag). Empty = every request answers 403 (deny by default). README.md § Admin page.
+ACCESS_TEAM_DOMAIN = ""
+ACCESS_AUD = ""
+
+# No request logs: the privacy policy promises the address is used for 60 seconds only (the rate-limit
+# keys) and stored nowhere.
+[observability]
+enabled = false

@@ -1,0 +1,122 @@
+<!doctype html>
+<!--
+  A FAKE host page for the consent kit (local development only — never deployed).
+  `node kit/build.mjs` renders it to kit/dist/demo/index.html (DE) and kit/dist/demo/en/index.html (EN):
+  {{key}} = a demo string or a kit string (src/i18n/<lang>.json); the three ck: comments are replaced
+  exactly the way a site adapter emits the kit:
+    ck:head   → the config block + the inline head snippet + the inline kit CSS
+    ck:banner → templates/banner.html (layer 1 + dialog), first thing in <body>; its data-endpoint is
+                empty, so the demo sends no records
+    ck:kit    → <script data-cfasync="false" src="/kit.js" defer>
+  Serve kit/dist/ as the web root. The host font (Inter) is requested from /fonts/;
+  without it the page falls back to the system UI font.
+-->
+
+<html lang="{{lang}}" data-bs-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{demoTitle}}</title>
+<!-- The site's Google Consent Mode defaults (all denied); the kit sets url_passthrough, and only with marketing consent. -->
+<script data-cfasync="false">
+  window.dataLayer = window.dataLayer || [];
+  function gtag() { dataLayer.push(arguments); }
+  gtag("consent", "default", {
+    ad_storage: "denied",
+    ad_user_data: "denied",
+    ad_personalization: "denied",
+    analytics_storage: "denied",
+    functionality_storage: "denied",
+    personalization_storage: "denied",
+    security_storage: "granted",
+    wait_for_update: 2000,
+  });
+  gtag("set", "ads_data_redaction", true);
+</script>
+<!--ck:head-->
+<style>
+  @font-face { font-family: "Inter"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/inter-v12-latin-regular.woff2") format("woff2"); }
+  @font-face { font-family: "Inter"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/inter-v12-latin-600.woff2") format("woff2"); }
+  :root { --bg: #fff; --fg: #212529; --band: #f8f9fa; --line: #dee2e6; --link: #1d4ed8; color-scheme: light; }
+  [data-bs-theme="dark"] { --bg: #212529; --fg: #dee2e6; --band: #2b3035; --line: #495057; --link: #93b4f5; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 1rem; line-height: 1.5; }
+  a { color: var(--link); }
+  .demo-bar { position: fixed; inset: 0 0 auto 0; z-index: 1030; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 1rem; background: #0f172a; color: #fff; }
+  .demo-logo { font-weight: 600; letter-spacing: .02em; }
+  .demo-theme { display: flex; gap: .25rem; }
+  .demo-theme button { padding: .25rem .5rem; border: 1px solid #adb5bd; border-radius: .25rem; background: #0f172a; color: #fff; font: inherit; font-size: .75rem; cursor: pointer; }
+  .demo-theme button[aria-pressed="true"] { background: #fff; color: #212529; }
+  .demo-hero { position: relative; display: grid; place-items: center; min-height: 52svh; padding: 5rem 1rem 3rem; background: radial-gradient(ellipse at 30% 35%, #334155 0%, #1e293b 38%, #0f172a 75%); color: #fff; text-align: center; }
+  .demo-hero h1 { margin: 0 0 .75rem; font-size: clamp(2rem, 6vw, 3.5rem); font-weight: 600; line-height: 1.1; }
+  .demo-hero p { margin: 0 0 1.5rem; font-size: 1.125rem; }
+  .demo-cta { display: inline-block; padding: .75rem 1.5rem; border-radius: .5rem; background: #1d4ed8; color: #fff; font-weight: 600; font-size: 1.25rem; text-decoration: none; }
+  .demo-section { max-width: 60rem; margin: 0 auto; padding: 2.5rem 1rem; }
+  .demo-section h2 { margin: 0 0 1rem; font-size: 1.75rem; font-weight: 400; text-align: center; }
+  .demo-band { background: var(--band); }
+  .demo-footer { padding: 2rem 1rem 3rem; border-top: 1px solid var(--line); text-align: center; font-size: .875rem; }
+  .demo-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem 1.5rem; margin-bottom: 1rem; }
+  .demo-status { font-family: ui-monospace, monospace; font-size: .75rem; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<!--ck:banner-->
+<header class="demo-bar">
+  <span class="demo-logo">{{demoLogo}}</span>
+  <span class="demo-theme" role="group" aria-label="Theme">
+    <button type="button" data-theme="light" aria-pressed="true">Light</button>
+    <button type="button" data-theme="dark" aria-pressed="false">Dark</button>
+    <button type="button" data-theme="auto" aria-pressed="false">Auto</button>
+  </span>
+</header>
+<main>
+  <section class="demo-hero">
+    <div>
+      <h1>{{demoHeading}}</h1>
+      <p>{{demoLede}}</p>
+      <a class="demo-cta" href="#about">{{demoCta}}</a>
+    </div>
+  </section>
+  <section class="demo-section demo-band" id="about">
+    <h2>{{demoSection}}</h2>
+    <p>{{demoText}}</p>
+    <p>{{demoText}}</p>
+  </section>
+  <section class="demo-section">
+    <p>{{demoText}}</p>
+    <p>{{demoText}}</p>
+    <p>{{demoText}}</p>
+  </section>
+</main>
+<footer class="demo-footer">
+  <nav>
+    <a href="{{privacyUrl}}">{{privacy}}</a>
+    <a href="{{imprintUrl}}">{{imprint}}</a>
+    <a href="#cookie-settings" data-ck-open>{{demoCookieLink}}</a>
+  </nav>
+  <p class="demo-status" id="demo-status">…</p>
+</footer>
+<!-- A gated tag, as a site writes it: the kit activates it on an analytics grant. -->
+<script data-cfasync="false" type="text/plain" src="/demo/fake-analytics.js" data-consent="analytics" async></script>
+<script>
+  (function () {
+    var root = document.documentElement;
+    var buttons = document.querySelectorAll(".demo-theme button");
+    function setTheme(theme) {
+      if (theme === "auto") root.removeAttribute("data-bs-theme");
+      else root.setAttribute("data-bs-theme", theme);
+      buttons.forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-theme") === theme)); });
+    }
+    buttons.forEach(function (b) { b.addEventListener("click", function () { setTheme(b.getAttribute("data-theme")); }); });
+    var status = document.getElementById("demo-status");
+    function show() {
+      var s = window.consentKit ? window.consentKit.get() : null;
+      status.textContent = "consentKit.get() = " + JSON.stringify(s) + " · fake analytics ran: " + (window.__fakeAnalyticsRuns || 0);
+    }
+    document.addEventListener("consentkit:change", function () { setTimeout(show, 50); });
+    show();
+  })();
+</script>
+<!--ck:kit-->
+</body>
+</html>

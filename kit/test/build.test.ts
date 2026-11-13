@@ -1,0 +1,113 @@
+// @vitest-environment node
+/**
+ * Consent kit — the build artefacts: the brotli budgets of the three shipped files (~1.5 × the first build,
+ * inside the hard ceilings head ≤ 1 KB, CSS ≤ 3 KB, JS ≤ 6 KB), the structure of the DE/EN sample strings
+ * (the same keys — exactly the ones the reference markup needs, plus the `_note` — every one filled; the
+ * wording itself is a site's own) and the reference markup / demo rendering without a missing placeholder.
+ */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { BUDGETS, buildAssets, measure, renderBanner, renderDemo, strings } from "../build.mjs";
+
+type Assets = Record<"head.js" | "kit.css" | "kit.js", string>;
+let assets: Assets;
+
+beforeAll(async () => {
+	assets = await buildAssets();
+});
+
+const VARS = { privacyUrl: "/datenschutz/", imprintUrl: "/impressum/", endpoint: "https://consent.example.com/v1/record", site: "example-site" };
+
+describe("budgets (brotli)", () => {
+	it.each(Object.entries(BUDGETS))("%s stays within %i bytes", (name, budget) => {
+		const text = assets[name as keyof Assets];
+		expect(text.length).toBeGreaterThan(0);
+		expect(measure(text).brotli).toBeLessThanOrEqual(budget);
+	});
+
+	it("the budgets sit at ~1.5 × the first build, inside the hard ceilings (1 KB / 3 KB / 6 KB)", () => {
+		expect(BUDGETS).toEqual({ "head.js": 900, "kit.css": 2200, "kit.js": 2500 });
+		expect(BUDGETS["head.js"]).toBeLessThanOrEqual(1024);
+		expect(BUDGETS["kit.css"]).toBeLessThanOrEqual(3072);
+		expect(BUDGETS["kit.js"]).toBeLessThanOrEqual(6144);
+	});
+});
+
+describe("reference strings (samples)", () => {
+	const de = strings("de") as Record<string, string>;
+	const en = strings("en") as Record<string, string>;
+	/** The kit strings the reference markup needs: its {{key}} placeholders (developer comment dropped), minus the adapter's values. */
+	const ADAPTER_VALUES = ["privacyUrl", "imprintUrl", "endpoint", "site"];
+	const template = readFileSync(resolve(__dirname, "../templates/banner.html"), "utf8").replace(/<!--[\s\S]*?-->/g, "");
+	const needed = [...new Set(Array.from(template.matchAll(/\{\{\s*([A-Za-z]\w*)\s*\}\}/g), (m) => m[1] ?? ""))]
+		.filter((key) => !ADAPTER_VALUES.includes(key))
+		.sort();
+
+	it("DE and EN carry the same keys, every value a non-empty string", () => {
+		expect(Object.keys(en).sort()).toEqual(Object.keys(de).sort());
+		for (const value of [...Object.values(de), ...Object.values(en)]) {
+			expect(typeof value).toBe("string");
+			expect(value.trim().length).toBeGreaterThan(0);
+		}
+	});
+
+	it.each([
+		["de", de],
+		["en", en],
+	] as const)("every key the reference markup needs exists in %s and is filled — and nothing else but the `_note`", (_lang, s) => {
+		expect(needed.length).toBeGreaterThan(0);
+		for (const key of needed) expect(s[key]?.trim(), key).toBeTruthy();
+		expect(Object.keys(s).sort()).toEqual([...needed, "_note"].sort());
+	});
+
+	it.each(["de", "en"] as const)("the rendered markup (%s) carries the strings: the three equal buttons of each layer, the save and close controls, the links to the privacy policy and the imprint in both layers", (lang) => {
+		const s = strings(lang) as Record<string, string>;
+		const html = renderBanner(lang, VARS);
+		for (const key of ["acceptAll", "rejectAll", "settings", "saveChoice", "close"]) expect(html, key).toContain(`>${s[key]}</button>`);
+		expect(html.match(/<a href="\/datenschutz\/">/g)).toHaveLength(2);
+		expect(html.match(/<a href="\/impressum\/">/g)).toHaveLength(2);
+	});
+});
+
+describe("rendering", () => {
+	it.each(["de", "en"])("the reference markup (%s) has no unfilled placeholder and escapes values — the endpoint and site included", (lang) => {
+		const html = renderBanner(lang, { ...VARS, privacyUrl: "/p/?a=1&b=2", site: 'a"b' });
+		expect(html).not.toMatch(/\{\{|\}\}/);
+		expect(html).toContain('href="/p/?a=1&amp;b=2"');
+		expect(html).toContain('data-endpoint="https://consent.example.com/v1/record"');
+		expect(html).toContain('data-site="a&quot;b"');
+		expect(html).toContain(strings(lang).acceptAll);
+		expect(html).toContain(`aria-label="${strings(lang).title}"`);
+	});
+
+	it.each(["privacyUrl", "imprintUrl", "endpoint", "site"])("a missing value (%s) is an error, never an empty string", (key) => {
+		const vars: Record<string, string> = { ...VARS };
+		delete vars[key];
+		expect(() => renderBanner("de", vars)).toThrow(new RegExp(`\\{\\{${key}\\}\\}`));
+	});
+
+	it.each(["de", "en"])("the demo page (%s) carries the config block, the inline head snippet and CSS, layer 1 first in <body>, kit.js deferred — and sends no records", (lang) => {
+		const html = renderDemo(lang, assets);
+		expect(html).not.toMatch(/\{\{|<!--ck:/);
+		expect(html).toContain(`<html lang="${lang}"`);
+		expect(html).toContain('<script type="application/json" id="ck-config">');
+		expect(html).toContain(`<script data-cfasync="false">${assets["head.js"]}</script>`);
+		expect(html).toContain(`<style>${assets["kit.css"]}</style>`);
+		expect(html).toMatch(/<body>\s*<div class="ck-cc" role="region"/);
+		expect(html).toContain('<script data-cfasync="false" src="/kit.js" defer></script>');
+		expect(html.indexOf("ck-config")).toBeLessThan(html.indexOf(assets["head.js"]));
+		expect(html).toContain('data-endpoint="" data-site="example-site"');
+		const config = JSON.parse(html.match(/<script type="application\/json" id="ck-config">(.*?)<\/script>/)?.[1] ?? "null");
+		expect(config).not.toHaveProperty("records");
+		expect(config).not.toHaveProperty("site");
+	});
+
+	it.each([
+		["de", "#datenschutz", "#impressum"],
+		["en", "#privacy", "#imprint"],
+	])("the demo page (%s) links the privacy policy and the imprint with anchors in its own language — both layers and the footer", (lang, privacy, imprint) => {
+		const html = renderDemo(lang, assets);
+		expect(html.match(new RegExp(`href="${privacy}"`, "g"))).toHaveLength(3);
+		expect(html.match(new RegExp(`href="${imprint}"`, "g"))).toHaveLength(3);
+	});
+});

@@ -1,0 +1,63 @@
+<!--
+  Consent kit — reference markup: layer 1 + the settings dialog. The adapter renders it server-side,
+  as the FIRST thing in <body> (before the skip link): layer 1 is then the first stop for the keyboard and
+  is painted with the page, never inserted later.
+
+  Placeholders: {{key}} = the string `key` of src/i18n/<lang>.json (HTML-escaped by the adapter);
+  adapter values: {{privacyUrl}} / {{imprintUrl}} = the site's privacy policy and imprint URLs,
+  {{endpoint}} = the records endpoint (e.g. https://consent.example.com/v1/record; empty = the
+  kit sends no records), {{site}} = the site id the records service allows (its `SITES` var).
+
+  Contract with kit.js / kit.css — keep it exactly:
+    [data-ck-banner]           layer 1 (role="region", named by aria-label — no visible title,
+                               data-nosnippet); carries data-endpoint and data-site
+    [data-ck-dialog]           the settings <dialog> (opened with showModal(), data-nosnippet)
+    [data-ck-action="accept"]  „Alle akzeptieren“ — layer 1 and dialog
+    [data-ck-action="reject"]  „Alle ablehnen“ — layer 1 and dialog
+    [data-ck-action="save"]    „Auswahl speichern“ — dialog only (reads the switches)
+    [data-ck-open]             opens the dialog (layer 1 „Einstellungen“; the footer link too)
+    [data-ck-close]            „Schließen“ — closes the dialog without a decision
+    [data-ck-category="analytics"|"marketing"]  the switches (unchecked until a choice is stored)
+  Every decision button has the same single class .ck-cc-btn — equal weight is the point. The ids are
+  unique per page (one kit per page). Layer 1 has no heading (the page outline starts with the host's h1).
+  closedby="any": a click on the backdrop closes without a decision.
+-->
+<div class="ck-cc" role="region" aria-label="{{title}}" data-ck-banner data-endpoint="{{endpoint}}" data-site="{{site}}" data-nosnippet>
+  <div class="ck-cc-i">
+    <div>
+      <p class="ck-cc-p">{{text}}</p>
+      <p class="ck-cc-l"><a href="{{privacyUrl}}">{{privacy}}</a> · <a href="{{imprintUrl}}">{{imprint}}</a></p>
+    </div>
+    <div class="ck-cc-b">
+      <button type="button" class="ck-cc-btn" data-ck-action="accept">{{acceptAll}}</button>
+      <button type="button" class="ck-cc-btn" data-ck-action="reject">{{rejectAll}}</button>
+      <button type="button" class="ck-cc-btn" data-ck-open>{{settings}}</button>
+    </div>
+  </div>
+</div>
+<dialog class="ck-cd" aria-labelledby="ck-cd-t" closedby="any" data-ck-dialog data-nosnippet>
+  <div class="ck-cd-h">
+    <h2 class="ck-cd-t" id="ck-cd-t">{{dialogTitle}}</h2>
+    <button type="button" class="ck-cd-close" data-ck-close>{{close}}</button>
+  </div>
+  <div class="ck-cd-c">
+    <details class="ck-cd-d">
+      <summary class="ck-cd-n" id="ck-cd-na">{{analytics}}</summary>
+      <p class="ck-cd-x" id="ck-cd-xa">{{analyticsDetails}}</p>
+    </details>
+    <input class="ck-cd-s" type="checkbox" role="switch" aria-labelledby="ck-cd-na" aria-describedby="ck-cd-xa" data-ck-category="analytics">
+  </div>
+  <div class="ck-cd-c">
+    <details class="ck-cd-d">
+      <summary class="ck-cd-n" id="ck-cd-nm">{{marketing}}</summary>
+      <p class="ck-cd-x" id="ck-cd-xm">{{marketingDetails}}</p>
+    </details>
+    <input class="ck-cd-s" type="checkbox" role="switch" aria-labelledby="ck-cd-nm" aria-describedby="ck-cd-xm" data-ck-category="marketing">
+  </div>
+  <p class="ck-cc-l"><a href="{{privacyUrl}}">{{privacy}}</a> · <a href="{{imprintUrl}}">{{imprint}}</a></p>
+  <div class="ck-cc-b">
+    <button type="button" class="ck-cc-btn" data-ck-action="accept">{{acceptAll}}</button>
+    <button type="button" class="ck-cc-btn" data-ck-action="reject">{{rejectAll}}</button>
+    <button type="button" class="ck-cc-btn" data-ck-action="save">{{saveChoice}}</button>
+  </div>
+</dialog>
