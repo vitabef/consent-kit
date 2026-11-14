@@ -404,13 +404,19 @@ for (const { version, probe } of HUGOS) {
 		describe("a scratch site: a text of its own in three parts (consentKit_text with line breaks)", () => {
 			/** Three parts, an empty and a blank line between them, CRLF, spaces and tabs at the ends, HTML in the first. */
 			const TEXT = '  First <b>part</b> & "quotes" it\'s 1+1 \r\n\n \t \nSecond part\t\nThird part, the last\n';
+			/** The paragraph's text as a browser reads it: the parts, one space between them. */
+			const PROSE = "First <b>part</b> & \"quotes\" it's 1+1 Second part Third part, the last";
 			let html = "";
+			let minified = "";
 
 			beforeAll(() => {
 				const site = scratchSite(version, "blocks", BASE, { i18n: `${PREFIX}text: ${yamlString(TEXT, "the test text")}\n` });
 				const run = build(version, "blocks", site);
 				expect(run.status, run.log).toBe(0);
 				html = readFileSync(path.join(run.dest, "index.html"), "utf8");
+				const small = build(version, "blocks-minify", site, undefined, ["--minify"]);
+				expect(small.status, small.log).toBe(0);
+				minified = readFileSync(path.join(small.dest, "index.html"), "utf8");
 			}, 120000);
 
 			it("one span per non-empty line inside the one paragraph, joined by one space, each part escaped by html/template", () => {
@@ -424,6 +430,19 @@ for (const { version, probe } of HUGOS) {
 
 			it("the first layer and the dialog are the reference markup rendered with that text", () => {
 				expect(normalize(banner(html))).toBe(normalize(renderBanner("en", { privacyUrl: "/privacy/", imprintUrl: "/imprint/", endpoint: "", site: "", text: TEXT })));
+			});
+
+			it.each([
+				["built", () => html],
+				["built with --minify", () => minified],
+			])("%s: the one space between the spans survives — the paragraph's textContent keeps a space between the parts", async (_label, page) => {
+				const markup = page();
+				expect(markup.match(/<\/span> <span\b/g)).toHaveLength(2);
+				const read = await inWindow(markup, (w) => {
+					const p = w.document.querySelectorAll(".ck-cc-p");
+					return { count: p.length, spans: p[0]?.querySelectorAll(".ck-cc-s").length, text: p[0]?.textContent };
+				});
+				expect(read).toEqual({ count: 1, spans: 3, text: PROSE });
 			});
 		});
 

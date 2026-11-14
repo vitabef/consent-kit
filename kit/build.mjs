@@ -79,7 +79,7 @@ export const BLOCK_CLASS = "ck-cc-s";
 
 /** A string in blocks, the markup of {{key|blocks}}: one <span class="ck-cc-s"> per line (split at "\n"; spaces,
  *  tabs and carriage returns at its ends dropped, empty lines left out), each part HTML-escaped, the spans joined
- *  by one space — so the paragraph's text still reads as one (textContent, a copy, a screen reader). */
+ *  by one space — so the paragraph's textContent keeps a space between the parts. */
 export function blocks(text) {
   return text
     .split("\n")
