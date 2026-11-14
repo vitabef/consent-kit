@@ -4,6 +4,9 @@
   is painted with the page, never inserted later.
 
   Placeholders: {{key}} = the string `key` of src/i18n/<lang>.json (HTML-escaped by the adapter);
+  {{key|blocks}} = that string in blocks: one <span class="ck-cc-s"> per line (split at "\n"; spaces, tabs
+  and carriage returns at its ends dropped, empty lines left out), each HTML-escaped, the spans joined by
+  one space — kit.css makes each a block (one LCP candidate per block box);
   adapter values: {{privacyUrl}} / {{imprintUrl}} = the site's privacy policy and imprint URLs,
   {{endpoint}} = the records endpoint (e.g. https://consent.example.com/v1/record; empty = the
   kit sends no records), {{site}} = the site id the records service allows (its `SITES` var).
@@ -25,7 +28,7 @@
 <div class="ck-cc" role="region" aria-label="{{title}}" data-ck-banner data-endpoint="{{endpoint}}" data-site="{{site}}" data-nosnippet>
   <div class="ck-cc-i">
     <div>
-      <p class="ck-cc-p">{{text}}</p>
+      <p class="ck-cc-p">{{text|blocks}}</p>
       <p class="ck-cc-l"><a href="{{privacyUrl}}">{{privacy}}</a> · <a href="{{imprintUrl}}">{{imprint}}</a></p>
     </div>
     <div class="ck-cc-b">

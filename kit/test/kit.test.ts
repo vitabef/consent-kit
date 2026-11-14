@@ -15,6 +15,8 @@
  * not in the jar — and a duplicate (host + domain) copy can only be staged through that accessor's getter.
  * happy-dom has no native dialog behaviour (no Escape, no focus return, no closedby): Escape is staged as
  * the browser's `cancel` + close(); the kit's own focus handling and backdrop fallback are what is tested.
+ * happy-dom paints nothing: every test runs with a PerformanceObserver stand-in that supports paint timing, and
+ * `paint()` is the browser reporting the first paint.
  */
 import { buildAssets, renderBanner, configBlock, strings } from "../build.mjs";
 
@@ -70,6 +72,36 @@ beforeAll(async () => {
 	assets = await buildAssets();
 });
 
+/** A paint entry list, as the kit's paint observer receives it (it reads none of it). */
+type PaintList = { getEntries(): { name: string; entryType: string; startTime: number }[] };
+/** PerformanceObserver stand-in (happy-dom paints nothing): what is observed, whether it was disconnected;
+ *  `notify()` delivers a paint entry to this observer, `paint()` the browser's first paint to every connected one. */
+const paintObservers: FakePerformanceObserver[] = [];
+class FakePerformanceObserver {
+	static supportedEntryTypes: readonly string[] = ["mark", "measure", "navigation", "paint", "resource"];
+	options: unknown[] = [];
+	disconnected = false;
+	private readonly callback: (list: PaintList, observer: FakePerformanceObserver) => void;
+	constructor(callback: (list: PaintList, observer: FakePerformanceObserver) => void) {
+		this.callback = callback;
+		paintObservers.push(this);
+	}
+	observe(options: unknown) {
+		this.options.push(options);
+	}
+	disconnect() {
+		this.disconnected = true;
+	}
+	/** A paint entry for this observer — also after a disconnect (an engine that still delivers a queued one). */
+	notify(name = "first-paint") {
+		this.callback({ getEntries: () => [{ name, entryType: "paint", startTime: 100 }] }, this);
+	}
+}
+/** The browser reports a paint (`first-paint`, then `first-contentful-paint`): every connected observer gets it. */
+const paint = (name = "first-paint") => {
+	for (const o of paintObservers.slice()) if (!o.disconnected && o.options.length) o.notify(name);
+};
+
 /** The prototype's real `cookie` accessor, wrapped so every write is recorded (and a read can be staged). */
 function watchCookieWrites() {
 	let proto: object | null = Object.getPrototypeOf(document);
@@ -121,6 +153,8 @@ beforeEach(() => {
 	Object.defineProperty(navigator, "sendBeacon", { configurable: true, value: beaconSpy });
 	reloadSpy = vi.fn(() => order.push("reload"));
 	vi.spyOn(window.location, "reload").mockImplementation(reloadSpy as () => void);
+	paintObservers.length = 0;
+	vi.stubGlobal("PerformanceObserver", FakePerformanceObserver);
 	document.addEventListener("consentkit:change", onConsent);
 	delete win().consentKit;
 	win().dataLayer = [];
@@ -140,12 +174,13 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-/** A page as the adapter emits it: config block in <head>, reference markup first in <body>, a footer link, gated tags. */
-function page(opts: { cookie?: string; gpc?: boolean; config?: object | null; extra?: string; endpoint?: string; site?: string } = {}) {
-	const { cookie, gpc, config = CONFIG, extra = GATED, endpoint = ENDPOINT, site = SITE } = opts;
+/** A page as the adapter emits it: config block in <head>, reference markup first in <body>, a footer link, gated tags;
+ *  `text` replaces the sample first-layer text. */
+function page(opts: { cookie?: string; gpc?: boolean; config?: object | null; extra?: string; endpoint?: string; site?: string; text?: string } = {}) {
+	const { cookie, gpc, config = CONFIG, extra = GATED, endpoint = ENDPOINT, site = SITE, text } = opts;
 	document.head.innerHTML = config ? configBlock(config) : "";
 	document.body.innerHTML =
-		renderBanner("de", { privacyUrl: "/datenschutz/", imprintUrl: "/impressum/", endpoint, site }) +
+		renderBanner("de", { privacyUrl: "/datenschutz/", imprintUrl: "/impressum/", endpoint, site, ...(text === undefined ? {} : { text }) }) +
 		'<main><p>Inhalt</p></main><footer><a id="footer-link" href="#cookie-settings" data-ck-open>Cookie-Einstellungen</a></footer>' +
 		extra;
 	if (cookie !== undefined) document.cookie = `ck_consent=${cookie}; Path=/`;
@@ -1373,12 +1408,13 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 			throw new DOMException(`'${selector}' is not a valid selector`, "SyntaxError");
 		});
 	};
-	/** An undecided page whose layer 1 is LAYER, reported once by the observer. */
+	/** An undecided page whose layer 1 is LAYER, painted once and reported once by the observer. */
 	const measured = (opts?: Parameters<typeof page>[0]) => {
 		page(opts);
 		const layer = at(banner(), LAYER);
 		runHead();
 		runKit();
+		paint();
 		observers[0]?.report();
 		return layer;
 	};
@@ -1394,11 +1430,13 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		vi.stubGlobal("ResizeObserver", FakeResizeObserver);
 	});
 
-	it("undecided: layer 1's height becomes --ck-layer-h on <html> at the observer's first report — no layout forced at boot — and follows every resize; hidden behind the open dialog (0) it keeps the last height", () => {
+	it("undecided: layer 1's height becomes --ck-layer-h on <html> at the observer's first report — the observer started after the first paint, no layout forced at boot — and follows every resize; hidden behind the open dialog (0) it keeps the last height", () => {
 		page();
 		const layer = at(banner(), LAYER);
 		runHead();
 		runKit();
+		expect(observers).toHaveLength(0);
+		paint();
 		expect(observers).toHaveLength(1);
 		expect(observers[0]?.observed).toEqual([banner()]);
 		expect(layer).not.toHaveBeenCalled();
@@ -1426,22 +1464,28 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		expect(document.querySelectorAll("#ck-sp")).toHaveLength(1);
 	});
 
-	it("without ResizeObserver, layer 1 is measured once at boot", () => {
+	it("without ResizeObserver, layer 1 is measured once, after the first paint", () => {
 		vi.stubGlobal("ResizeObserver", undefined);
 		page();
-		at(banner(), LAYER);
+		const layer = at(banner(), LAYER);
 		runHead();
 		runKit();
+		expect(layer).not.toHaveBeenCalled();
+		expect(layerHeight()).toBe("");
+		paint();
+		paint("first-contentful-paint");
+		expect(layer).toHaveBeenCalledTimes(1);
 		expect(layerHeight()).toBe("285px");
 	});
 
-	it("without ResizeObserver, every focus check reads layer 1's height again: no missing height after a boot before layout, no stale one after a rotation", async () => {
+	it("without ResizeObserver, every focus check reads layer 1's height again: no missing height after a measure that found none, no stale one after a rotation", async () => {
 		vi.stubGlobal("ResizeObserver", undefined);
 		motion(false);
 		page();
-		const layer = at(banner(), box(0, 0)); // not laid out yet when kit.js boots
+		const layer = at(banner(), box(0, 0)); // no height when it is measured (not laid out yet)
 		runHead();
 		runKit();
+		paint();
 		expect(layerHeight()).toBe("");
 		layer.mockReturnValue(LAYER);
 		const link = footerLink();
@@ -1536,6 +1580,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		["GPC", { gpc: true }],
 	] as const)("decided at boot (%s): no observer, no height, no spacer, no padding", (_label, opts) => {
 		measured(opts);
+		expect(paintObservers).toEqual([]);
 		expect(observers).toEqual([]);
 		expect(layerHeight()).toBe("");
 		expect(spacer()).toBeNull();
@@ -1548,6 +1593,8 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		const listen = vi.spyOn(document, "addEventListener");
 		runHead();
 		runKit();
+		paint();
+		expect(paintObservers).toEqual([]);
 		expect(observers).toEqual([]);
 		expect(layerHeight()).toBe("");
 		expect(spacer()).toBeNull();
@@ -1565,6 +1612,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		expect(roomApplies()).toEqual(NO_ROOM);
 		runKit();
 		expect(document.body.lastElementChild).toBe(spacer());
+		paint(); // the first paint is long past: the buffered observer gets its entry at once
 		observers[0]?.report();
 		expect(layerHeight()).toBe("285px");
 		expect(roomApplies()).toEqual(ROOM);
@@ -1764,6 +1812,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		const old = spacer();
 		runHead();
 		runKit();
+		paint(); // the new kit's buffered paint observer: the page has painted long ago
 		expect(document.querySelectorAll("#ck-sp")).toHaveLength(1);
 		expect(spacer()).toBe(old);
 		expect(document.body.lastElementChild).toBe(old);
@@ -1792,6 +1841,124 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		await frames(4);
 		expect(linkScroll).not.toHaveBeenCalled();
 		expect(otherScroll).not.toHaveBeenCalled();
+	});
+
+	describe("nothing of the kit inside the first paint", () => {
+		/** An undecided page, booted: layer 1 is LAYER, no paint reported yet. */
+		const booted = () => {
+			page();
+			const layer = at(banner(), LAYER);
+			runHead();
+			runKit();
+			return layer;
+		};
+
+		it("the boot writes no attribute of <html> or <body> before the first paint — not even in the rendering update before it, where a ResizeObserver reports; the height comes after it", () => {
+			page();
+			at(banner(), LAYER);
+			runHead();
+			const seen: string[] = [];
+			const note = (records: MutationRecord[]) => seen.push(...records.map((r) => `${(r.target as Element).tagName.toLowerCase()} ${r.attributeName ?? ""}`));
+			const watch = new MutationObserver(note);
+			watch.observe(document.documentElement, { attributes: true });
+			watch.observe(document.body, { attributes: true });
+			runKit();
+			for (const o of observers) o.report(); // the first rendering update: a ResizeObserver's first report comes before the paint
+			note(watch.takeRecords());
+			expect(seen).toEqual([]);
+			paint();
+			for (const o of observers) o.report();
+			note(watch.takeRecords());
+			watch.disconnect();
+			expect(seen).toEqual(["html style"]); // the control: the watch sees the kit's writes
+			expect(layerHeight()).toBe("285px");
+		});
+
+		it.each(["first-paint", "first-contentful-paint"])("sizing waits for the first paint: a buffered paint observer, no ResizeObserver, no measure, no height — kit.css's fallbacks meanwhile; the first entry (%s) disconnects it and starts the ResizeObserver", (name) => {
+			const layer = booted();
+			expect(paintObservers).toHaveLength(1);
+			expect(paintObservers[0]?.options).toEqual([{ type: "paint", buffered: true }]);
+			expect(observers).toHaveLength(0);
+			expect(layer).not.toHaveBeenCalled();
+			expect(layerHeight()).toBe("");
+			expect(roomApplies()).toEqual(ROOM); // the padding's 30vh fallback, the spacer without a height
+			paint(name);
+			expect(paintObservers[0]?.disconnected).toBe(true);
+			expect(observers).toHaveLength(1);
+			expect(observers[0]?.observed).toEqual([banner()]);
+			observers[0]?.report();
+			expect(layerHeight()).toBe("285px");
+		});
+
+		it.each([
+			["no PerformanceObserver", undefined],
+			["no paint timing (supportedEntryTypes without paint)", class extends FakePerformanceObserver {
+				static override supportedEntryTypes = ["mark", "measure", "navigation", "resource"];
+			}],
+			["no supportedEntryTypes (an older engine)", class extends FakePerformanceObserver {
+				static override supportedEntryTypes = undefined as unknown as readonly string[];
+			}],
+			["an observe() that throws", class extends FakePerformanceObserver {
+				override observe(): void {
+					throw new TypeError("The provided type is not supported");
+				}
+			}],
+		] as const)("%s: sizing starts at once, as before — and the boot completes", (_label, observer) => {
+			vi.stubGlobal("PerformanceObserver", observer);
+			booted();
+			expect(observers).toHaveLength(1);
+			expect(observers[0]?.observed).toEqual([banner()]);
+			observers[0]?.report();
+			expect(layerHeight()).toBe("285px");
+			expect((api() as unknown as { _k: number })._k).toBe(1);
+		});
+
+		it("a decision before the first paint disconnects the paint observer at once: no ResizeObserver, no height — the paint that follows starts nothing", () => {
+			booted();
+			layer1("accept").click();
+			expect(decided()).toBe(true);
+			expect(paintObservers[0]?.disconnected).toBe(true);
+			paint();
+			expect(observers).toEqual([]);
+			expect(layerHeight()).toBe("");
+			expect(spacer()).toBeNull();
+		});
+
+		it("a paint entry an engine still delivers after a decision starts nothing: sizing only while layer 1 is undecided", () => {
+			booted();
+			layer1("reject").click();
+			paintObservers[0]?.notify();
+			expect(observers).toEqual([]);
+			expect(layerHeight()).toBe("");
+		});
+
+		it("a newer head snippet that owns the page before the first paint: the old kit's paint observer starts nothing", () => {
+			booted();
+			runHead();
+			paint();
+			expect(observers).toEqual([]);
+			expect(layerHeight()).toBe("");
+		});
+
+		it("a second paint notification starts no second ResizeObserver: sizing starts once", () => {
+			booted();
+			paintObservers[0]?.notify("first-paint");
+			paintObservers[0]?.notify("first-contentful-paint");
+			expect(observers).toHaveLength(1);
+		});
+
+		it("a keyboard focus before the first paint: the focus check measures layer 1 itself (the padding and the spacer get its height) and scrolls a covered focus clear", async () => {
+			motion(false);
+			booted();
+			const link = footerLink();
+			at(link, box(600, 20));
+			const scroll = scrolls(link);
+			link.focus();
+			await frames(2);
+			expect(observers).toHaveLength(0);
+			expect(layerHeight()).toBe("285px");
+			expect(scroll).toHaveBeenCalledTimes(1);
+		});
 	});
 });
 
@@ -1987,6 +2154,25 @@ describe("the reference markup", () => {
 			expect(document.getElementById(el.getAttribute("aria-labelledby") ?? "")?.tagName).toBe("SUMMARY");
 			expect(document.getElementById(el.getAttribute("aria-describedby") ?? "")?.closest("details")).not.toBeNull();
 		}
+	});
+
+	it("the first-layer text with line breaks: in the one paragraph, one block per non-empty line (a span kit.css makes display: block), its markup characters text; the paragraph reads on as one text, the parts joined by one space", () => {
+		boot({ text: '  Part <b>one</b> & "two"\r\n\n \nPart two\t\nPart three\n' });
+		const p = $(".ck-cc-p");
+		expect(document.querySelectorAll("[data-ck-banner] p.ck-cc-p")).toHaveLength(1);
+		expect(Array.from(p.children, (el) => `${el.tagName} ${el.className}`)).toEqual(["SPAN ck-cc-s", "SPAN ck-cc-s", "SPAN ck-cc-s"]);
+		expect(Array.from(p.children, (el) => el.textContent)).toEqual(['Part <b>one</b> & "two"', "Part two", "Part three"]);
+		expect(p.querySelector("b")).toBeNull();
+		expect(p.textContent).toBe('Part <b>one</b> & "two" Part two Part three');
+		expect(cssRules()).toContainEqual(["", ".ck-cc .ck-cc-s", "display:block"]);
+	});
+
+	it("the sample text (no line break) is one block: one span, the whole text", () => {
+		boot();
+		const p = $(".ck-cc-p");
+		expect(p.children).toHaveLength(1);
+		expect(p.firstElementChild?.className).toBe("ck-cc-s");
+		expect(p.textContent).toBe(S.text);
 	});
 
 	it("the dialog has exactly the two consent categories — no „Notwendig“ block, no intro", () => {

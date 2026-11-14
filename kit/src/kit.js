@@ -19,8 +19,13 @@
  *      has missed the on-load event.
  * NO network request before a decision: no record, no beacon, no gated script.
  *
+ * Nothing of this file runs inside the first paint: the boot writes no attribute of <html> or <body> (a host script
+ * observing them would run in the first paint's task, and the first paint would wait for its request), and layer 1's
+ * height is first measured after the first paint.
+ *
  * Layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured): while it is on screen (undecided), its height —
- * kept current by a ResizeObserver, without one measured at boot and at every focus check — is --ck-layer-h on
+ * kept current by a ResizeObserver from the first paint on (a buffered PerformanceObserver on `paint`; at once
+ * without paint timing), without one measured then and at every focus check — is --ck-layer-h on
  * <html>; kit.css turns it into the scroll-padding-bottom of the root and of <body> and the height of a spacer
  * kit.js appends as the last child of <body>, so every focused element, the last footer link included, can scroll
  * clear of it. A keyboard focus (:focus-visible) that layer 1 still covers once its position has held still for two
@@ -176,13 +181,22 @@
   // A ResizeObserver keeps it current without a layout forced at boot; 0 — layer 1 hidden behind the open dialog —
   // keeps the last height, so nothing behind the modal moves. A kit whose page a newer head snippet took over keeps
   // its observer connected, but inert: it writes nothing any more (the new kit, once booted, takes the spacer over).
+  // The observer starts after the first paint (until then the padding is kit.css's 30vh fallback, the spacer has no
+  // height and a focus check measures layer 1 itself): its first report would write to <html> inside that paint.
   const LAYER_H = "--ck-layer-h";
   let sizer = null;
   let spacer = null;
+  let painted = null; // the paint observer, until the first paint
   const put = (h) => {
     if (h && w.consentKit === api) html.style.setProperty(LAYER_H, h + "px");
   };
   const measure = () => put(banner.getBoundingClientRect().height);
+  /** Starts keeping the height current: once, on a page this kit still owns, while layer 1 is undecided. */
+  const size = () => {
+    if (sizer || w.consentKit !== api || html.classList.contains(DECIDED)) return;
+    if (w.ResizeObserver) (sizer = new w.ResizeObserver(measure)).observe(banner);
+    else measure();
+  };
   /** A keyboard focus — :focus-visible; a pointer focuses what it already shows. An engine without it: every focus. */
   const keyboard = (el) => {
     try {
@@ -216,9 +230,10 @@
     };
     w.requestAnimationFrame(check);
   };
-  /** Decided: layer 1 hides for good — its height (the padding), the spacer, the observer and the focus check go. */
+  /** Decided: layer 1 hides for good — its height (the padding), the spacer, the observers and the focus check go. */
   const hide = () => {
     html.classList.add(DECIDED);
+    if (painted) painted.disconnect();
     if (sizer) sizer.disconnect();
     if (spacer) spacer.remove();
     html.style.removeProperty(LAYER_H);
@@ -422,7 +437,9 @@
   });
 
   /* ---------- boot ---------- */
-  html.classList.remove("ck-off"); // a late boot heals the head snippet's load-time fallback
+  // a late boot heals the head snippet's load-time fallback — only then: removing an absent class still rewrites
+  // the attribute, a mutation record on <html>
+  if (html.classList.contains("ck-off")) html.classList.remove("ck-off");
   const queued = api._q;
   api._q = 0;
   api.open = () => open(null);
@@ -443,8 +460,18 @@
     spacer.id = "ck-sp";
     spacer.setAttribute("aria-hidden", "true");
     d.body.appendChild(spacer);
-    if (w.ResizeObserver) (sizer = new w.ResizeObserver(measure)).observe(banner);
-    else measure();
+    // the height from the first paint on (buffered: a paint before this boot arrives at once); at once without paint timing
+    try {
+      if (w.PerformanceObserver.supportedEntryTypes.includes("paint")) {
+        (painted = new w.PerformanceObserver(() => {
+          painted.disconnect();
+          size();
+        })).observe({ type: "paint", buffered: true });
+      }
+    } catch (e) {
+      painted = null;
+    }
+    if (!painted) size();
     d.addEventListener("focusin", uncover, true);
   }
   api._k = 1;

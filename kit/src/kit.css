@@ -134,10 +134,17 @@ html:not(.ck-decided):not(.ck-off) > body {
   margin: 0 auto;
 }
 
-/* The one text block (no visible title: the region is named by aria-label). */
+/* The one paragraph (no visible title: the region is named by aria-label). */
 .ck-cc .ck-cc-p {
   margin: 0 0 0.375rem;
   text-wrap: pretty;
+}
+
+/* Its parts — a line break in the text starts the next: each a block of its own. Chromium makes one LCP candidate
+   per block box (all its lines together; a <br> does not split it), so a long paragraph split at sentence or clause
+   boundaries does not become the page's largest element on a phone. */
+.ck-cc .ck-cc-s {
+  display: block;
 }
 
 .ck-cc .ck-cc-l,

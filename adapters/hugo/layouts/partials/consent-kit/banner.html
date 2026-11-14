@@ -27,7 +27,7 @@
 <div class="ck-cc" role="region" aria-label="{{ i18n "consentKit_title" }}" data-ck-banner data-endpoint="{{ $ck.endpoint }}" data-site="{{ $ck.site }}" data-nosnippet>
   <div class="ck-cc-i">
     <div>
-      <p class="ck-cc-p">{{ i18n "consentKit_text" }}</p>
+      <p class="ck-cc-p">{{ $textShown := false }}{{ range split (i18n "consentKit_text") "\n" }}{{ with trim . " \t\r" }}{{ if $textShown }} {{ end }}{{ $textShown = true }}<span class="ck-cc-s">{{ . }}</span>{{ end }}{{ end }}</p>
       <p class="ck-cc-l"><a href="{{ $ck.privacyUrl }}">{{ i18n "consentKit_privacy" }}</a> · <a href="{{ $ck.imprintUrl }}">{{ i18n "consentKit_imprint" }}</a></p>
     </div>
     <div class="ck-cc-b">

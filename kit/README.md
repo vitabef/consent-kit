@@ -62,6 +62,12 @@ Why this order:
 - kit.js is deferred: it runs after the parse, when inline end-of-body scripts have registered their listeners. If it
   has not booted by `load` (blocked, 404, an old engine), the head snippet hides the first layer — nothing can be
   granted without kit.js; a later boot shows it again.
+- Nothing of kit.js runs inside the first paint. Its boot writes no attribute of `<html>` or `<body>` (it removes
+  `ck-off` only when the class is there), and it measures the first layer only after the first paint: a buffered
+  `PerformanceObserver` on `paint` starts the measuring at the first entry (at once where paint timing is missing).
+  A site script that observes `<html>` (a `MutationObserver`) would otherwise run inside the first paint's task, and
+  Lighthouse's simulated throttling would make the first paint wait for that script's requests. The height goes on
+  `<html>` with `style.setProperty` (CSSOM, allowed under any Content Security Policy), never in a `<style>` element.
 
 `head.js` and `kit.js` ship as a pair: kit.js calls the head snippet's internals (`consentKit._u`, `consentKit._r`), so
 a page always carries the two files of one build. Next to a head snippet without the reader (`_r`), kit.js still
@@ -116,17 +122,31 @@ hidden at `load`.
 `kit/templates/banner.html` holds the first layer (`<div class="ck-cc" role="region">`) and the settings
 `<dialog class="ck-cd">`. Render it on the server in the page language and keep every `data-ck-*` attribute,
 id and class unchanged; its ids allow one kit per page. The leading comment is developer documentation (the reference
-renderer drops it). Placeholders are `{{key}}`, and every value is HTML-escaped:
+renderer drops it). Placeholders are `{{key}}` — the first-layer text is `{{text|blocks}}`
+([in blocks](#the-first-layer-text-in-blocks)) — and every value is HTML-escaped:
 
 | Placeholder | Value |
 |---|---|
-| `{{title}}`, `{{text}}`, `{{privacy}}`, `{{imprint}}`, `{{acceptAll}}`, `{{rejectAll}}`, `{{settings}}`, `{{dialogTitle}}`, `{{close}}`, `{{analytics}}`, `{{analyticsDetails}}`, `{{marketing}}`, `{{marketingDetails}}`, `{{saveChoice}}` | the string of that key in `kit/src/i18n/<lang>.json` ([i18n](#i18n)) |
+| `{{title}}`, `{{text\|blocks}}`, `{{privacy}}`, `{{imprint}}`, `{{acceptAll}}`, `{{rejectAll}}`, `{{settings}}`, `{{dialogTitle}}`, `{{close}}`, `{{analytics}}`, `{{analyticsDetails}}`, `{{marketing}}`, `{{marketingDetails}}`, `{{saveChoice}}` | the string of that key in `kit/src/i18n/<lang>.json` ([i18n](#i18n)) |
 | `{{privacyUrl}}`, `{{imprintUrl}}` | the site's privacy policy and imprint URLs (linked in both layers) |
 | `{{endpoint}}` | the records endpoint, e.g. `https://consent.example.com/v1/record`; empty = no records |
 | `{{site}}` | the site id — one of the records service's `SITES` |
 
 The reference renderer (`renderBanner()` in `kit/build.mjs`) treats a placeholder without a value as an error, never as
 an empty string.
+
+### The first-layer text in blocks
+
+The first layer's text is one paragraph, `<p class="ck-cc-p">`, and a line break (`\n`) in the `text` string starts a
+new block of it: `{{text|blocks}}` renders one `<span class="ck-cc-s">` per line — spaces, tabs and carriage returns
+at its ends dropped, empty lines left out, each part HTML-escaped — and joins the spans with one space, so the
+paragraph still reads as one text (a copy, a screen reader). kit.css makes each span `display: block`. A string
+without a line break is one block; the sample strings have none. `blocks()` in `kit/build.mjs` is the reference.
+
+Why: Chromium makes one Largest Contentful Paint candidate per block box — all its lines together; a `<br>` does not
+split it, only a block-level child does. On a phone, where the first layer's text runs over many lines, a long
+paragraph can become the page's largest element and its paint the page's LCP. Split the text at sentence or clause
+boundaries, so that no block outgrows the page's own content (its headline, its first image or paragraph).
 
 ### Attributes
 
@@ -334,7 +354,7 @@ same keys. The `_note` key (no placeholder) says so.
 | Key | Used as |
 |---|---|
 | `title` | the first layer's `aria-label` (it has no visible title) |
-| `text` | the first layer's one paragraph |
+| `text` | the first layer's one paragraph; a line break starts a new block ([in blocks](#the-first-layer-text-in-blocks)) |
 | `privacy`, `imprint` | the link texts (both layers) |
 | `acceptAll`, `rejectAll` | the decision buttons (both layers) |
 | `settings` | the first layer's button that opens the dialog |
@@ -389,8 +409,10 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
 - **Focus not obscured** (WCAG 2.4.11): the first layer covers the bottom of the viewport, so while it is shown (the
   visitor undecided, kit.js booted) every focused element must be able to scroll clear of it — the last ones on the
   page, the footer's links, included. kit.js keeps the layer's height in the custom property `--ck-layer-h` on
-  `<html>`: a `ResizeObserver` follows every change (no layout is forced at boot); without one, it is measured at boot
-  and again at every focus check (a rotation, a layout after boot). kit.css turns it into:
+  `<html>`: a `ResizeObserver` follows every change from the first paint on (no layout is forced at boot; [page
+  structure](#page-structure)); without one, it is measured then and again at every focus check (a rotation, a later
+  layout). Until then the padding is the `30vh` fallback below, the spacer has no height, and a focus check measures
+  the layer itself. kit.css turns it into:
   - `scroll-padding-bottom` on `<html>` and on `<body>` (for a `<body>` that is a scroll container itself) — the
     height + `0.5rem` — so the browser scrolls a focused element above the layer; `30vh + 0.5rem` until the height is
     measured;
@@ -420,7 +442,7 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
   Limits:
   - While the visitor is undecided, the scrollable area grows by the layer's height: a short page may become
     scrollable, and a footer that `min-height: 100vh` on a flex `<body>` holds at the bottom moves up by that height
-    when kit.js boots — a layout shift.
+    once kit.js has measured the layer, right after the first paint — a layout shift.
   - An app shell — `overflow: hidden` on `<html>` and `<body>`, the content scrolling in a container inside — gets its
     room from `<body>`: a focus in the container's last layer height scrolls `<body>`, and the whole shell with it, up
     by up to that height; it comes back when the visitor decides.
