@@ -4,12 +4,13 @@
  * when a committed copy differs from a fresh generation.
  *
  *   layouts/partials/consent-kit/banner.html  ← kit/templates/banner.html: a string placeholder {{key}} becomes
- *                                              {{ i18n "consentKit_key" }}, an adapter value ({{privacyUrl}},
- *                                              {{imprintUrl}}, {{endpoint}}, {{site}}) the value of
+ *                                              {{ i18n "consentKit_key" }}, {{key|blocks}} a range over that
+ *                                              string's lines (kit/build.mjs blocks() in Hugo), an adapter value
+ *                                              ({{privacyUrl}}, {{imprintUrl}}, {{endpoint}}, {{site}}) the value of
  *                                              site.Params.consentKit validated by consent-kit/params.html
  *   i18n/<lang>.yaml                           ← kit/src/i18n/<lang>.json: the sample strings as consentKit_<key>
  */
-import { ADAPTER_VALUES, LANGS, bannerTemplate, replacePlaceholders, strings } from "../../kit/build.mjs";
+import { ADAPTER_VALUES, BLOCK_CLASS, LANGS, bannerTemplate, replacePlaceholders, strings } from "../../kit/build.mjs";
 
 /** The i18n id prefix of every kit string. */
 export const PREFIX = "consentKit_";
@@ -21,10 +22,22 @@ const stringKeys = () => Object.keys(strings(LANGS[0])).filter((key) => key !== 
 export function bannerPartial() {
   const keys = new Set(stringKeys());
   const ids = [];
-  const markup = replacePlaceholders(bannerTemplate(), (key) => {
-    if (ADAPTER_VALUES.includes(key)) return `{{ $ck.${key} }}`;
+  const markup = replacePlaceholders(bannerTemplate(), (key, filter) => {
+    if (ADAPTER_VALUES.includes(key)) {
+      if (filter !== undefined) throw new Error(`templates/banner.html: {{${key}|${filter}}}: an adapter value takes no filter`);
+      return `{{ $ck.${key} }}`;
+    }
     if (!keys.has(key)) throw new Error(`templates/banner.html: {{${key}}} is neither a string key nor an adapter value`);
     if (!ids.includes(PREFIX + key)) ids.push(PREFIX + key);
+    if (filter === "blocks") {
+      // blocks() of kit/build.mjs: split at "\n", spaces, tabs and carriage returns at the ends trimmed, empty lines
+      // left out, one span per line, joined by one space; html/template escapes each part (no safeHTML)
+      const shown = `$${key}Shown`;
+      return (
+        `{{ ${shown} := false }}{{ range split (i18n "${PREFIX}${key}") "\\n" }}{{ with trim . " \\t\\r" }}` +
+        `{{ if ${shown} }} {{ end }}{{ ${shown} = true }}<span class="${BLOCK_CLASS}">{{ . }}</span>{{ end }}{{ end }}`
+      );
+    }
     return `{{ i18n "${PREFIX}${key}" }}`;
   });
   return [

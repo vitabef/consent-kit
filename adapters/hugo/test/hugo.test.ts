@@ -11,7 +11,8 @@
  *   - `hugo --minify` (README, Minification): the minified head snippet, run in happy-dom over a stored choice, still
  *     reads it; its bytes and its ECMAScript version per minifier setting; a JSON precision that breaks it;
  *   - scratch sites prove the CSP nonce argument, a site's own string winning over the module's sample, the link forms,
- *     the optional parameters left out and a config value that tries to close the config block;
+ *     the optional parameters left out, a first-layer text of its own in blocks (one span per line) and a config value
+ *     that tries to close the config block;
  *   - every check of consent-kit/params.html fails the build with its message: variant configs merged over the
  *     example's (`--config`), or a scratch site's own parameters where a key has to be missing.
  * Without one of the Hugo versions (mise) its builds are SKIPPED, loudly: a warning here, the verdict in the gate.
@@ -45,11 +46,24 @@ describe("generated files (drift guard)", () => {
 		expect(readFileSync(path.join(ADAPTER, rel), "utf8")).toBe(text);
 	});
 
-	it("the banner partial turns every placeholder of the reference markup into a Hugo action: each string into its i18n id, each value into the validated parameter", () => {
+	it("the banner partial turns every placeholder of the reference markup into a Hugo action: each string into its i18n id (the text into its blocks), each value into the validated parameter", () => {
 		const partial = generate()["layouts/partials/consent-kit/banner.html"];
-		expect(partial).not.toMatch(/\{\{\s*[A-Za-z]\w*\s*\}\}/);
-		for (const key of Object.keys(strings("de")).filter((k) => k !== "_note")) expect(partial).toContain(`{{ i18n "${PREFIX}${key}" }}`);
-		for (const key of ["privacyUrl", "imprintUrl", "endpoint", "site"]) expect(partial).toContain(`{{ $ck.${key} }}`);
+		const keys = Object.keys(strings("de")).filter((k) => k !== "_note");
+		const values = ["privacyUrl", "imprintUrl", "endpoint", "site"];
+		// no placeholder of the reference markup is left: {{key}} or {{key|filter}} (Go's own {{ end }} is no placeholder)
+		expect(partial).not.toMatch(new RegExp(`\\{\\{\\s*(${[...keys, ...values].join("|")})\\s*(\\|[^}]*)?\\}\\}`));
+		for (const key of keys.filter((k) => k !== "text")) expect(partial).toContain(`{{ i18n "${PREFIX}${key}" }}`);
+		for (const key of values) expect(partial).toContain(`{{ $ck.${key} }}`);
+	});
+
+	it("the first-layer text: one span per line of the string, its ends trimmed, empty lines left out, joined by one space — escaped by html/template (no safeHTML)", () => {
+		const partial = generate()["layouts/partials/consent-kit/banner.html"];
+		expect(partial).toContain(
+			'<p class="ck-cc-p">{{ $textShown := false }}{{ range split (i18n "consentKit_text") "\\n" }}{{ with trim . " \\t\\r" }}' +
+				'{{ if $textShown }} {{ end }}{{ $textShown = true }}<span class="ck-cc-s">{{ . }}</span>{{ end }}{{ end }}</p>',
+		);
+		expect(partial).not.toContain(`{{ i18n "${PREFIX}text" }}`);
+		expect(partial).not.toMatch(/safeHTML|htmlUnescape/);
 	});
 
 	it(`the module's minimum Hugo (hugo.toml) is the oldest version the build tests run with: ${HUGO_MIN}`, () => {
@@ -384,6 +398,32 @@ for (const { version, probe } of HUGOS) {
 			it("the optional parameters left out: no domain, cleanup or legacy; the categories default per category; no colour overrides; no records", () => {
 				expect(config(html)).toEqual({ revision: 7, cookie: "site_consent", categories: { analytics: "stats", marketing: "marketing" } });
 				expect(banner(html)).toContain('data-endpoint="" data-site=""');
+			});
+		});
+
+		describe("a scratch site: a text of its own in three parts (consentKit_text with line breaks)", () => {
+			/** Three parts, an empty and a blank line between them, CRLF, spaces and tabs at the ends, HTML in the first. */
+			const TEXT = '  First <b>part</b> & "quotes" it\'s 1+1 \r\n\n \t \nSecond part\t\nThird part, the last\n';
+			let html = "";
+
+			beforeAll(() => {
+				const site = scratchSite(version, "blocks", BASE, { i18n: `${PREFIX}text: ${yamlString(TEXT, "the test text")}\n` });
+				const run = build(version, "blocks", site);
+				expect(run.status, run.log).toBe(0);
+				html = readFileSync(path.join(run.dest, "index.html"), "utf8");
+			}, 120000);
+
+			it("one span per non-empty line inside the one paragraph, joined by one space, each part escaped by html/template", () => {
+				const p = html.match(/<p class="ck-cc-p">[\s\S]*?<\/p>/g) ?? [];
+				expect(p).toHaveLength(1);
+				expect(p[0]).toBe(
+					'<p class="ck-cc-p"><span class="ck-cc-s">First &lt;b&gt;part&lt;/b&gt; &amp; &#34;quotes&#34; it&#39;s 1&#43;1</span> ' +
+						'<span class="ck-cc-s">Second part</span> <span class="ck-cc-s">Third part, the last</span></p>',
+				);
+			});
+
+			it("the first layer and the dialog are the reference markup rendered with that text", () => {
+				expect(normalize(banner(html))).toBe(normalize(renderBanner("en", { privacyUrl: "/privacy/", imprintUrl: "/imprint/", endpoint: "", site: "", text: TEXT })));
 			});
 		});
 

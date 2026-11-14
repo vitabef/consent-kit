@@ -74,16 +74,36 @@ const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace
 /** Drops the developer comments; keeps the ck: markers. */
 const stripComments = (html) => html.replace(/<!--(?!ck:)[\s\S]*?-->\n?/g, "");
 
-/** Replaces every {{key}} placeholder with `value(key)`. */
+/** The class of one block of a {{key|blocks}} placeholder (kit.css makes it display: block). */
+export const BLOCK_CLASS = "ck-cc-s";
+
+/** A string in blocks, the markup of {{key|blocks}}: one <span class="ck-cc-s"> per line (split at "\n"; spaces,
+ *  tabs and carriage returns at its ends dropped, empty lines left out), each part HTML-escaped, the spans joined
+ *  by one space — so the paragraph's text still reads as one (textContent, a copy, a screen reader). */
+export function blocks(text) {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/^[ \t\r]+|[ \t\r]+$/g, ""))
+    .filter((line) => line !== "")
+    .map((line) => `<span class="${BLOCK_CLASS}">${escapeHtml(line)}</span>`)
+    .join(" ");
+}
+
+/** Replaces every {{key}} placeholder with `value(key)` and every {{key|blocks}} with `value(key, "blocks")`; any
+ *  other filter is an error. */
 export function replacePlaceholders(html, value) {
-  return html.replace(/\{\{\s*([A-Za-z]\w*)\s*\}\}/g, (_, key) => value(key));
+  return html.replace(/\{\{\s*([A-Za-z]\w*)\s*(?:\|\s*([A-Za-z]\w*)\s*)?\}\}/g, (_, key, filter) => {
+    if (filter !== undefined && filter !== "blocks") throw new Error(`{{${key}|${filter}}}: no such filter (blocks)`);
+    return value(key, filter);
+  });
 }
 
 /** Fills every {{key}} from `values`; a placeholder without a value is an error, never an empty string. */
 function fill(html, values, where) {
-  return replacePlaceholders(html, (key) => {
+  return replacePlaceholders(html, (key, filter) => {
     if (!(key in values)) throw new Error(`${where}: no value for {{${key}}}`);
-    return escapeHtml(String(values[key]));
+    const text = String(values[key]);
+    return filter === "blocks" ? blocks(text) : escapeHtml(text);
   });
 }
 

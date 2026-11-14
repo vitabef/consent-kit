@@ -4,11 +4,11 @@
  * inside the hard ceilings head ≤ 1 KB, CSS ≤ 3 KB, JS ≤ 6 KB), the committed copy of those files in dist/ (the
  * drift guard), the structure of the DE/EN sample strings (the same keys — exactly the ones the reference markup
  * needs, plus the `_note` — every one filled; the wording itself is a site's own) and the reference markup / demo
- * rendering without a missing placeholder.
+ * rendering without a missing placeholder, the first-layer text in blocks (one span per line).
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { BUDGETS, COMMITTED_DIST, buildAssets, fileText, measure, renderBanner, renderDemo, strings } from "../build.mjs";
+import { BUDGETS, COMMITTED_DIST, blocks, buildAssets, fileText, measure, renderBanner, renderDemo, replacePlaceholders, strings } from "../build.mjs";
 
 type Assets = Record<"head.js" | "kit.css" | "kit.js", string>;
 let assets: Assets;
@@ -55,7 +55,7 @@ describe("reference strings (samples)", () => {
 	/** The kit strings the reference markup needs: its {{key}} placeholders (developer comment dropped), minus the adapter's values. */
 	const ADAPTER_VALUES = ["privacyUrl", "imprintUrl", "endpoint", "site"];
 	const template = readFileSync(resolve(__dirname, "../templates/banner.html"), "utf8").replace(/<!--[\s\S]*?-->/g, "");
-	const needed = [...new Set(Array.from(template.matchAll(/\{\{\s*([A-Za-z]\w*)\s*\}\}/g), (m) => m[1] ?? ""))]
+	const needed = [...new Set(Array.from(template.matchAll(/\{\{\s*([A-Za-z]\w*)\s*(?:\|\s*[A-Za-z]\w*\s*)?\}\}/g), (m) => m[1] ?? ""))]
 		.filter((key) => !ADAPTER_VALUES.includes(key))
 		.sort();
 
@@ -125,5 +125,40 @@ describe("rendering", () => {
 		const html = renderDemo(lang, assets);
 		expect(html.match(new RegExp(`href="${privacy}"`, "g"))).toHaveLength(3);
 		expect(html.match(new RegExp(`href="${imprint}"`, "g"))).toHaveLength(3);
+	});
+});
+
+describe("the first-layer text in blocks ({{text|blocks}})", () => {
+	/** Three parts, an empty and a blank line between them, CRLF, spaces and tabs at the ends, HTML in the first. */
+	const TEXT = '  First <b>part</b> & "quotes" \r\n\n \t \nSecond part\t\nThird part, the last\n';
+	const THREE =
+		'<p class="ck-cc-p"><span class="ck-cc-s">First &lt;b&gt;part&lt;/b&gt; &amp; &quot;quotes&quot;</span> ' +
+		'<span class="ck-cc-s">Second part</span> <span class="ck-cc-s">Third part, the last</span></p>';
+
+	it("a text with line breaks: one span per non-empty line, its ends trimmed, each part HTML-escaped, the spans joined by one space — inside the one paragraph", () => {
+		const html = renderBanner("de", { ...VARS, text: TEXT });
+		expect(html).toContain(THREE);
+		expect(html.match(/<p class="ck-cc-p">/g)).toHaveLength(1);
+		expect(html.match(/class="ck-cc-s"/g)).toHaveLength(3);
+	});
+
+	it.each(["de", "en"])("a text without a line break is exactly one span — the sample strings (%s)", (lang) => {
+		const s = strings(lang) as Record<string, string>;
+		expect(s.text).not.toMatch(/[\n&<>"]/); // the samples need no escape: the markup is the string as written
+		expect(renderBanner(lang, VARS)).toContain(`<p class="ck-cc-p"><span class="ck-cc-s">${s.text}</span></p>`);
+	});
+
+	it("a text of empty and blank lines only renders no span; blocks() is the same markup", () => {
+		expect(blocks(" \t\r\n\n\t")).toBe("");
+		expect(renderBanner("de", { ...VARS, text: "\n \n" })).toContain('<p class="ck-cc-p"></p>');
+		expect(blocks(TEXT)).toBe(THREE.slice('<p class="ck-cc-p">'.length, -"</p>".length));
+	});
+
+	it("only the text is split: another string keeps its line break, escaped as one text", () => {
+		expect(renderBanner("de", { ...VARS, acceptAll: "Accept\n<all>" })).toContain('data-ck-action="accept">Accept\n&lt;all&gt;</button>');
+	});
+
+	it("a placeholder with another filter is an error", () => {
+		expect(() => replacePlaceholders("<p>{{text|upper}}</p>", () => "")).toThrow("{{text|upper}}: no such filter (blocks)");
 	});
 });

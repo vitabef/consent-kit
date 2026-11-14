@@ -16,7 +16,7 @@ configuration, deploy and admin access.
 
 ## Status
 
-Version 0.1.2, maintained for the maintainer's own sites. There is no support, and issues and pull requests are not
+Version 0.1.3, maintained for the maintainer's own sites. There is no support, and issues and pull requests are not
 accepted. Security reports: [SECURITY.md](SECURITY.md).
 
 ## Requirements
