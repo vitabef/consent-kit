@@ -62,12 +62,19 @@ Why this order:
 - kit.js is deferred: it runs after the parse, when inline end-of-body scripts have registered their listeners. If it
   has not booted by `load` (blocked, 404, an old engine), the head snippet hides the first layer — nothing can be
   granted without kit.js; a later boot shows it again.
-- Nothing of kit.js runs inside the first paint. Its boot writes no attribute of `<html>` or `<body>` (it removes
-  `ck-off` only when the class is there), and it measures the first layer only after the first paint: a buffered
-  `PerformanceObserver` on `paint` starts the measuring at the first entry (at once where paint timing is missing).
-  A site script that observes `<html>` (a `MutationObserver`) would otherwise run inside the first paint's task, and
-  Lighthouse's simulated throttling would make the first paint wait for that script's requests. The height goes on
-  `<html>` with `style.setProperty` (CSSOM, allowed under any Content Security Policy), never in a `<style>` element.
+- kit.js writes nothing to the page inside the first paint's task. Its boot is a task of its own, which may come
+  before the first paint; for an undecided visitor it changes no attribute of `<html>` or `<body>` and no child of
+  `<body>`. It removes `ck-off` only when `<html>` has it: removing an absent class still rewrites the `class`
+  attribute when `<html>` has one. The page-end spacer and the first layer's height come only after the first
+  contentful paint: a buffered `PerformanceObserver` on `paint` starts them at the `first-contentful-paint` entry (a
+  `first-paint` entry alone does not), at once where paint timing is missing. A keyboard focus before that paint (an
+  autofocus field) is checked in animation frames that only read the layout until then ([accessibility](#accessibility),
+  Focus not obscured). A site script that observes `<html>` or `<body>` (a `MutationObserver`) would otherwise run
+  inside the first paint's task, and Lighthouse's simulated throttling would make the first paint wait for that
+  script's requests. The height goes on `<html>` with `style.setProperty` (CSSOM, allowed under any Content Security
+  Policy), never in a `<style>` element. What the boot still changes: a `consentKit.open()` queued before it opens the
+  dialog (`ck-settings` on `<html>`), and a decided visitor's granted tags are activated (inserted next to their
+  originals).
 
 `head.js` and `kit.js` ship as a pair: kit.js calls the head snippet's internals (`consentKit._u`, `consentKit._r`), so
 a page always carries the two files of one build. Next to a head snippet without the reader (`_r`), kit.js still
@@ -140,8 +147,8 @@ an empty string.
 The first layer's text is one paragraph, `<p class="ck-cc-p">`, and a line break (`\n`) in the `text` string starts a
 new block of it: `{{text|blocks}}` renders one `<span class="ck-cc-s">` per line — spaces, tabs and carriage returns
 at its ends dropped, empty lines left out, each part HTML-escaped — and joins the spans with one space, so the
-paragraph still reads as one text (a copy, a screen reader). kit.css makes each span `display: block`. A string
-without a line break is one block; the sample strings have none. `blocks()` in `kit/build.mjs` is the reference.
+paragraph's `textContent` keeps a space between the parts. kit.css makes each span `display: block`. A string without
+a line break is one block; the sample strings have none. `blocks()` in `kit/build.mjs` is the reference.
 
 Why: Chromium makes one Largest Contentful Paint candidate per block box — all its lines together; a `<br>` does not
 split it, only a block-level child does. On a phone, where the first layer's text runs over many lines, a long
@@ -409,15 +416,17 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
 - **Focus not obscured** (WCAG 2.4.11): the first layer covers the bottom of the viewport, so while it is shown (the
   visitor undecided, kit.js booted) every focused element must be able to scroll clear of it — the last ones on the
   page, the footer's links, included. kit.js keeps the layer's height in the custom property `--ck-layer-h` on
-  `<html>`: a `ResizeObserver` follows every change from the first paint on (no layout is forced at boot; [page
-  structure](#page-structure)); without one, it is measured then and again at every focus check (a rotation, a later
-  layout). Until then the padding is the `30vh` fallback below, the spacer has no height, and a focus check measures
-  the layer itself. kit.css turns it into:
+  `<html>`: a `ResizeObserver` follows every change from the first contentful paint on (no layout is forced at boot;
+  [page structure](#page-structure)); without one, it is measured then and again at every focus check (a rotation, a
+  later layout). Until then the padding is the `30vh` fallback below and there is no spacer; a keyboard focus before
+  it (an autofocus field) writes nothing — its check counts no frame as still until sizing has started and the
+  height is there (the frame after the start), then scrolls as below. kit.css turns it into:
   - `scroll-padding-bottom` on `<html>` and on `<body>` (for a `<body>` that is a scroll container itself) — the
     height + `0.5rem` — so the browser scrolls a focused element above the layer; `30vh + 0.5rem` until the height is
     measured;
   - a spacer as high as that padding, so that the last element can scroll that far too: an empty
-    `<div id="ck-sp" aria-hidden="true">` that kit.js appends as the last child of `<body>`. Its geometry is forced
+    `<div id="ck-sp" aria-hidden="true">` that kit.js appends as the last child of `<body>` when it starts measuring
+    (the first contentful paint). Its geometry is forced
     on the id with `!important` — `display: block`, the height, `flex: none`, no margin, padding or border,
     `visibility: hidden`, `pointer-events: none` — so a site's usual rules for the children of `<body>` (display,
     margins, flex shrinking) neither hide nor shrink it. As content of a `<body>` that stacks its children in a
@@ -442,7 +451,12 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
   Limits:
   - While the visitor is undecided, the scrollable area grows by the layer's height: a short page may become
     scrollable, and a footer that `min-height: 100vh` on a flex `<body>` holds at the bottom moves up by that height
-    once kit.js has measured the layer, right after the first paint — a layout shift.
+    once kit.js has appended the spacer and measured the layer, right after the first contentful paint — a layout
+    shift.
+  - An engine that lists paint timing (`PerformanceObserver.supportedEntryTypes` with `paint`) but delivers no
+    buffered entry to a kit.js that boots after the first paint never starts the measuring by itself: the padding
+    stays `30vh + 0.5rem` and there is no spacer until the first keyboard focus, whose check starts it after 120
+    frames (about 2 s at 60 Hz) and then scrolls with the height.
   - An app shell — `overflow: hidden` on `<html>` and `<body>`, the content scrolling in a container inside — gets its
     room from `<body>`: a focus in the container's last layer height scrolls `<body>`, and the whole shell with it, up
     by up to that height; it comes back when the visitor decides.
@@ -456,8 +470,8 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
   - The forced geometry covers display, height, flex, margins, padding and border, not `min-height`, `max-height`,
     `position`, `float` or `order`: a site rule for the children of `<body>` that sets one of them (for example
     `body > div { min-height: 50vh }`) can make the spacer taller or move it.
-  - The spacer is the last child of `<body>` when kit.js boots; whatever the site appends to `<body>` later comes
-    after it, and a focus there can stay under the layer.
+  - The spacer is the last child of `<body>` when kit.js appends it; whatever the site appends to `<body>` later
+    comes after it, and a focus there can stay under the layer.
 - **Equal weight**: the three decision buttons of a layer share one class (`.ck-cc-btn`) and one look; the close
   button is a quiet text button that decides nothing. Buttons are at least 44 px high, the close button 44 × 44 px, a
   switch's touch target 52 × 44 px; a 3 px focus ring; switch rules for forced colours and reduced motion.

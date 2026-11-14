@@ -16,7 +16,7 @@
  * happy-dom has no native dialog behaviour (no Escape, no focus return, no closedby): Escape is staged as
  * the browser's `cancel` + close(); the kit's own focus handling and backdrop fallback are what is tested.
  * happy-dom paints nothing: every test runs with a PerformanceObserver stand-in that supports paint timing, and
- * `paint()` is the browser reporting the first paint.
+ * `paint()` is the browser reporting the first paint and the first contentful paint.
  */
 import { buildAssets, renderBanner, configBlock, strings } from "../build.mjs";
 
@@ -72,10 +72,13 @@ beforeAll(async () => {
 	assets = await buildAssets();
 });
 
-/** A paint entry list, as the kit's paint observer receives it (it reads none of it). */
-type PaintList = { getEntries(): { name: string; entryType: string; startTime: number }[] };
+type PaintEntry = { name: string; entryType: string; startTime: number };
+/** A paint entry list, as the kit's paint observer receives it. */
+type PaintList = { getEntries(): PaintEntry[]; getEntriesByName(name: string): PaintEntry[] };
+/** Both paint entries — what a buffered observer gets at once when the page has painted before it observes. */
+const PAINTED = ["first-paint", "first-contentful-paint"];
 /** PerformanceObserver stand-in (happy-dom paints nothing): what is observed, whether it was disconnected;
- *  `notify()` delivers a paint entry to this observer, `paint()` the browser's first paint to every connected one. */
+ *  `notify()` delivers paint entries to this observer, `paint()` to every connected one. */
 const paintObservers: FakePerformanceObserver[] = [];
 class FakePerformanceObserver {
 	static supportedEntryTypes: readonly string[] = ["mark", "measure", "navigation", "paint", "resource"];
@@ -92,14 +95,17 @@ class FakePerformanceObserver {
 	disconnect() {
 		this.disconnected = true;
 	}
-	/** A paint entry for this observer — also after a disconnect (an engine that still delivers a queued one). */
-	notify(name = "first-paint") {
-		this.callback({ getEntries: () => [{ name, entryType: "paint", startTime: 100 }] }, this);
+	/** One notification with these paint entries (default: both) for this observer — also after a disconnect (an
+	 *  engine that still delivers a queued one). */
+	notify(...names: string[]) {
+		const entries = (names.length ? names : PAINTED).map((name) => ({ name, entryType: "paint", startTime: 100 }));
+		this.callback({ getEntries: () => entries, getEntriesByName: (name) => entries.filter((e) => e.name === name) }, this);
 	}
 }
-/** The browser reports a paint (`first-paint`, then `first-contentful-paint`): every connected observer gets it. */
-const paint = (name = "first-paint") => {
-	for (const o of paintObservers.slice()) if (!o.disconnected && o.options.length) o.notify(name);
+/** The browser reports paint entries (default: `first-paint` and `first-contentful-paint` in one notification):
+ *  every connected observer gets them. */
+const paint = (...names: string[]) => {
+	for (const o of paintObservers.slice()) if (!o.disconnected && o.options.length) o.notify(...names);
 };
 
 /** The prototype's real `cookie` accessor, wrapped so every write is recorded (and a read can be staged). */
@@ -674,12 +680,14 @@ describe("a decision", () => {
 });
 
 describe("no network before a decision", () => {
-	it("an undecided visitor: no fetch, no beacon, no XHR, no script element created (the one element is the page-end spacer)", () => {
+	it("an undecided visitor: no fetch, no beacon, no XHR, no script element created (the one element is the page-end spacer, after the first contentful paint)", () => {
 		const xhrOpen = vi.spyOn(XMLHttpRequest.prototype, "open");
 		page();
 		const create = vi.spyOn(document, "createElement");
 		runHead();
 		runKit();
+		expect(create.mock.calls).toEqual([]);
+		paint();
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(beaconSpy).not.toHaveBeenCalled();
 		expect(xhrOpen).not.toHaveBeenCalled();
@@ -1464,15 +1472,16 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		expect(document.querySelectorAll("#ck-sp")).toHaveLength(1);
 	});
 
-	it("without ResizeObserver, layer 1 is measured once, after the first paint", () => {
+	it("without ResizeObserver, layer 1 is measured once, after the first contentful paint", () => {
 		vi.stubGlobal("ResizeObserver", undefined);
 		page();
 		const layer = at(banner(), LAYER);
 		runHead();
 		runKit();
+		paint("first-paint");
 		expect(layer).not.toHaveBeenCalled();
 		expect(layerHeight()).toBe("");
-		paint();
+		paint("first-contentful-paint");
 		paint("first-contentful-paint");
 		expect(layer).toHaveBeenCalledTimes(1);
 		expect(layerHeight()).toBe("285px");
@@ -1611,8 +1620,8 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		expect(spacer()).toBeNull();
 		expect(roomApplies()).toEqual(NO_ROOM);
 		runKit();
+		paint(); // the first paint is long past: the buffered observer gets both entries at once
 		expect(document.body.lastElementChild).toBe(spacer());
-		paint(); // the first paint is long past: the buffered observer gets its entry at once
 		observers[0]?.report();
 		expect(layerHeight()).toBe("285px");
 		expect(roomApplies()).toEqual(ROOM);
@@ -1853,41 +1862,72 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 			return layer;
 		};
 
-		it("the boot writes no attribute of <html> or <body> before the first paint — not even in the rendering update before it, where a ResizeObserver reports; the height comes after it", () => {
+		/** Records every attribute change of <html> and <body> and every child change of <body>, as "<tag> <what>". */
+		const watchRoot = () => {
+			const seen: string[] = [];
+			const note = (records: MutationRecord[]) =>
+				seen.push(...records.map((r) => `${(r.target as Element).tagName.toLowerCase()} ${r.type === "attributes" ? (r.attributeName ?? "") : r.type}`));
+			const watch = new MutationObserver(note);
+			watch.observe(document.documentElement, { attributes: true });
+			watch.observe(document.body, { attributes: true, childList: true });
+			return {
+				/** What has changed so far. */
+				seen: () => {
+					note(watch.takeRecords());
+					return seen;
+				},
+				stop: () => watch.disconnect(),
+			};
+		};
+
+		it("the boot changes no attribute of <html> or <body> and no child of <body> before the first contentful paint — not even in the rendering update before it, where a ResizeObserver reports; the spacer and the height come after it", () => {
 			page();
 			at(banner(), LAYER);
 			runHead();
-			const seen: string[] = [];
-			const note = (records: MutationRecord[]) => seen.push(...records.map((r) => `${(r.target as Element).tagName.toLowerCase()} ${r.attributeName ?? ""}`));
-			const watch = new MutationObserver(note);
-			watch.observe(document.documentElement, { attributes: true });
-			watch.observe(document.body, { attributes: true });
+			const root = watchRoot();
 			runKit();
 			for (const o of observers) o.report(); // the first rendering update: a ResizeObserver's first report comes before the paint
-			note(watch.takeRecords());
-			expect(seen).toEqual([]);
-			paint();
+			expect(root.seen()).toEqual([]);
+			paint("first-paint");
 			for (const o of observers) o.report();
-			note(watch.takeRecords());
-			watch.disconnect();
-			expect(seen).toEqual(["html style"]); // the control: the watch sees the kit's writes
+			expect(root.seen()).toEqual([]);
+			paint("first-contentful-paint");
+			for (const o of observers) o.report();
+			expect([...root.seen()].sort()).toEqual(["body childList", "html style"]); // the control: the watch sees the kit's changes
+			root.stop();
+			expect(document.body.lastElementChild).toBe(spacer());
 			expect(layerHeight()).toBe("285px");
 		});
 
-		it.each(["first-paint", "first-contentful-paint"])("sizing waits for the first paint: a buffered paint observer, no ResizeObserver, no measure, no height — kit.css's fallbacks meanwhile; the first entry (%s) disconnects it and starts the ResizeObserver", (name) => {
+		it("sizing waits for the first contentful paint: a buffered paint observer, no spacer, no ResizeObserver, no measure, no height — the padding's 30vh fallback meanwhile; a first-paint entry alone starts nothing; the first-contentful-paint entry disconnects the observer and starts the spacer and the ResizeObserver", () => {
 			const layer = booted();
 			expect(paintObservers).toHaveLength(1);
 			expect(paintObservers[0]?.options).toEqual([{ type: "paint", buffered: true }]);
 			expect(observers).toHaveLength(0);
+			expect(spacer()).toBeNull();
 			expect(layer).not.toHaveBeenCalled();
 			expect(layerHeight()).toBe("");
-			expect(roomApplies()).toEqual(ROOM); // the padding's 30vh fallback, the spacer without a height
-			paint(name);
+			expect(roomApplies()).toEqual([["html", "body"], []]); // the scroll padding (30vh fallback); no spacer yet
+			paint("first-paint");
+			expect(paintObservers[0]?.disconnected).toBe(false);
+			expect(observers).toHaveLength(0);
+			expect(spacer()).toBeNull();
+			paint("first-contentful-paint");
 			expect(paintObservers[0]?.disconnected).toBe(true);
+			expect(document.body.lastElementChild).toBe(spacer());
 			expect(observers).toHaveLength(1);
 			expect(observers[0]?.observed).toEqual([banner()]);
 			observers[0]?.report();
 			expect(layerHeight()).toBe("285px");
+			expect(roomApplies()).toEqual(ROOM);
+		});
+
+		it("both entries in one notification (a boot after both paints: the buffered entries arrive at once) start sizing", () => {
+			booted();
+			paint("first-paint", "first-contentful-paint");
+			expect(paintObservers[0]?.disconnected).toBe(true);
+			expect(observers).toHaveLength(1);
+			expect(document.body.lastElementChild).toBe(spacer());
 		});
 
 		it.each([
@@ -1903,9 +1943,10 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 					throw new TypeError("The provided type is not supported");
 				}
 			}],
-		] as const)("%s: sizing starts at once, as before — and the boot completes", (_label, observer) => {
+		] as const)("%s: sizing starts at once, as before — the spacer and the observer at boot — and the boot completes", (_label, observer) => {
 			vi.stubGlobal("PerformanceObserver", observer);
 			booted();
+			expect(document.body.lastElementChild).toBe(spacer());
 			expect(observers).toHaveLength(1);
 			expect(observers[0]?.observed).toEqual([banner()]);
 			observers[0]?.report();
@@ -1940,24 +1981,71 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 			expect(layerHeight()).toBe("");
 		});
 
-		it("a second paint notification starts no second ResizeObserver: sizing starts once", () => {
+		it("a second first-contentful-paint notification starts no second ResizeObserver and appends no second spacer: sizing starts once", () => {
 			booted();
-			paintObservers[0]?.notify("first-paint");
+			const appends = vi.spyOn(document.body, "appendChild");
+			paintObservers[0]?.notify("first-contentful-paint");
 			paintObservers[0]?.notify("first-contentful-paint");
 			expect(observers).toHaveLength(1);
+			expect(appends).toHaveBeenCalledTimes(1);
+			expect(document.querySelectorAll("#ck-sp")).toHaveLength(1);
 		});
 
-		it("a keyboard focus before the first paint: the focus check measures layer 1 itself (the padding and the spacer get its height) and scrolls a covered focus clear", async () => {
+		it("a decision before the first paint, then: no spacer to remove, nothing thrown, the focus check gone", () => {
+			booted();
+			const listen = vi.spyOn(document, "removeEventListener");
+			expect(() => layer1("accept").click()).not.toThrow();
+			expect(spacer()).toBeNull();
+			expect(listen.mock.calls.map(([type]) => type)).toContain("focusin");
+		});
+
+		/** The height on <html> at each scroll of `el`: the scroll padding the browser scrolls with. */
+		const scrollsWithHeight = (el: Element) => {
+			const heights: string[] = [];
+			vi.spyOn(el, "scrollIntoView").mockImplementation(() => {
+				heights.push(layerHeight());
+			});
+			return heights;
+		};
+
+		it("a keyboard focus before the first contentful paint (an autofocus field): its check writes nothing to <html> and counts no frame as still — after the paint it waits for the height (the observer's first report), then scrolls a covered focus clear with it", async () => {
 			motion(false);
 			booted();
 			const link = footerLink();
 			at(link, box(600, 20));
-			const scroll = scrolls(link);
+			const heights = scrollsWithHeight(link);
+			const root = watchRoot();
 			link.focus();
-			await frames(2);
+			await frames(4);
+			expect(root.seen()).toEqual([]);
+			expect(heights).toEqual([]);
+			paint(); // sizing starts: the spacer, the observer — its first report in the next rendering update
+			await frames(1);
+			expect(heights).toEqual([]); // the first frame after the start: the height is not there yet
+			observers[0]?.report();
+			await frames(1);
+			root.stop();
+			expect(heights).toEqual(["285px"]);
+			await frames(3);
+			expect(heights).toEqual(["285px"]);
+		});
+
+		it("no paint entry ever (an engine that lists paint timing but delivers no buffered entry to a late boot): the first keyboard focus's check starts sizing after 120 frames, then scrolls a covered focus clear with the height", async () => {
+			motion(false);
+			booted();
+			const link = footerLink();
+			at(link, box(600, 20));
+			const heights = scrollsWithHeight(link);
+			link.focus();
+			await frames(119);
 			expect(observers).toHaveLength(0);
-			expect(layerHeight()).toBe("285px");
-			expect(scroll).toHaveBeenCalledTimes(1);
+			expect(spacer()).toBeNull();
+			await frames(1);
+			expect(observers).toHaveLength(1);
+			expect(document.body.lastElementChild).toBe(spacer());
+			observers[0]?.report();
+			await frames(1);
+			expect(heights).toEqual(["285px"]);
 		});
 	});
 });
@@ -2156,7 +2244,7 @@ describe("the reference markup", () => {
 		}
 	});
 
-	it("the first-layer text with line breaks: in the one paragraph, one block per non-empty line (a span kit.css makes display: block), its markup characters text; the paragraph reads on as one text, the parts joined by one space", () => {
+	it("the first-layer text with line breaks: in the one paragraph, one block per non-empty line (a span kit.css makes display: block), its markup characters text; the paragraph's textContent has one space between the parts", () => {
 		boot({ text: '  Part <b>one</b> & "two"\r\n\n \nPart two\t\nPart three\n' });
 		const p = $(".ck-cc-p");
 		expect(document.querySelectorAll("[data-ck-banner] p.ck-cc-p")).toHaveLength(1);

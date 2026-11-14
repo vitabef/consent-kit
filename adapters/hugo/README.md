@@ -231,8 +231,8 @@ consentKit_analyticsDetails: "…"
 
 A line break in `consentKit_text` starts a new block of the first layer's one paragraph: the partial renders one
 `<span class="ck-cc-s">` per line — spaces, tabs and carriage returns at its ends dropped, empty lines left out, each
-part escaped by html/template — joined by one space, so the paragraph still reads as one text (kit/README.md, The
-first-layer text in blocks). Why: Chromium makes one Largest Contentful Paint candidate per block box, so on a phone a
+part escaped by html/template — joined by one space, so the paragraph's `textContent` keeps a space between the parts,
+also with `hugo --minify` (kit/README.md, The first-layer text in blocks). Why: Chromium makes one Largest Contentful Paint candidate per block box, so on a phone a
 long first-layer paragraph can become the page's largest element. Split it at sentence or clause boundaries, so that
 no block outgrows the page's own content:
 
