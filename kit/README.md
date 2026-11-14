@@ -210,7 +210,7 @@ why a withdrawal reloads the page.
 | Name | `cookie` from the config (`ck_consent`) |
 | Value | `encodeURIComponent(JSON.stringify({v, a, m, t}))` — `v` the revision, `a` analytics and `m` marketing as 0 or 1, `t` the time in unix seconds; no visitor id |
 | Attributes | `Max-Age=15552000` (180 days), `Path=/`, `SameSite=Lax`, and `Secure` on https only (a plain-http test host would drop the whole cookie); no `Domain`, so the cookie belongs to the host |
-| Written | only on a decision — the automatic GPC reject writes none; every existing copy (on the host and, with `domain`, on the domain) is deleted first |
+| Written | only on a decision — the automatic GPC reject writes none; every existing copy (on the host, with `domain` on the domain, and on the full hostname) is deleted first |
 | Read | by the head snippet: a copy counts only when `v` equals `revision`, `a` and `m` are 0 or 1 and `t` is a positive integer; with several valid copies the most restrictive one counts; anything else = undecided |
 | Asking again | raise `revision`: every stored choice stops counting and the first layer shows again |
 
@@ -248,16 +248,21 @@ dialog, so an explicit opt-in stays possible — it is stored and recorded like 
 - **Every page load** (kit.js boot): the `legacy` cookies are deleted, then the cleanup runs for every category that is
   not granted — undecided, GPC and denied visitors alike.
 - **Every decision**: the cleanup runs for each denied category.
-- **The cleanup** deletes the category's `cookies` (exact names, or prefixes ending in `*`) with `Path=/` on the host
-  and, with `domain` set, once more with `Domain=<domain>`, and removes its `localStorage` keys. With the demo config:
-  `_ga` and `_ga_*` for analytics; `_gcl_*` and the `localStorage` key `_gcl_ls` for marketing.
+- **The cleanup** deletes the category's `cookies` (exact names, or prefixes ending in `*`) in the three scopes below, and
+  removes its `localStorage` keys. With the demo config: `_ga` and `_ga_*` for analytics; `_gcl_*` and the
+  `localStorage` key `_gcl_ls` for marketing.
 - **A withdrawal** — a decision (a reject, or a saved choice) that denies a category granted before — runs: the cookie,
   the Consent Mode update, the cleanup, the record with `action: "withdraw"`, then `location.reload()`. No activation,
   event or focus work comes first, and every further deciding click on that page is ignored while the reload is under
   way: for 10 seconds, or until the page comes back from the back/forward cache — a host's `beforeunload` prompt can
   cancel the reload, and the page must not stay dead.
-- **A previous consent tool**: `legacy: ["previous-tool-consent"]` deletes a previous consent tool's cookie on the host
-  and on the domain on every load.
+- **A previous consent tool**: `legacy: ["previous-tool-consent"]` deletes a previous consent tool's cookie in the
+  three scopes below, on every load.
+- **Three scopes**: each cookie deletion (`Path=/`) covers the host-only cookie, the configured `domain`
+  (`Domain=<domain>`) and the full hostname (`Domain=<hostname>`, e.g. `.www.example.com`, which a previous tool or a
+  tag may have set and neither of the other two removes); on a page served on `domain` itself those two are one. Not
+  covered: a copy with another `Path`, and one on an intermediate parent domain (page `a.b.example.com`, `domain`
+  `example.com`, a cookie on `.b.example.com`).
 
 ## A page that stays alive
 

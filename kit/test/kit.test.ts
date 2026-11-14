@@ -49,6 +49,10 @@ const GATED =
 	'<script type="text/plain" data-consent="marketing" src="/js/ads.js"></script>';
 
 const EXPIRED = "=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/";
+/** The page's hostname (the environment URL above): a previous tool or a tag may have left a domain cookie on it. */
+const HOST = "www.example.test";
+/** The deletion of a cookie's copy on the full hostname (`Domain=www.example.test`). */
+const onHost = (name: string) => name + EXPIRED + "; Domain=" + HOST;
 
 let assets: Assets;
 let cookieWrites: string[];
@@ -452,27 +456,40 @@ describe("a decision", () => {
 		expect(decided()).toBe(true);
 	});
 
-	it("every copy of the old choice (host AND registrable domain) is deleted before the new one is written", () => {
+	it("every copy of the old choice (host, registrable domain AND full hostname) is deleted before the new one is written — none after it", () => {
 		boot({ cookie: stored({ v: 2, a: 1, m: 1, t: 1 }) });
 		footerLink().click();
 		inDialog("reject").click();
 		const i = cookieWrites.indexOf("ck_consent" + EXPIRED);
 		const j = cookieWrites.indexOf("ck_consent" + EXPIRED + "; Domain=example.test");
+		const h = cookieWrites.indexOf(onHost("ck_consent"));
 		const k = cookieWrites.findIndex((w) => w.startsWith("ck_consent=%7B"));
 		expect(i).toBeGreaterThanOrEqual(0);
 		expect(j).toBeGreaterThan(i);
-		expect(k).toBeGreaterThan(j);
+		expect(h).toBeGreaterThan(j);
+		expect(k).toBeGreaterThan(h);
+		expect(cookieWrites.slice(k + 1).filter((w) => w.startsWith("ck_consent="))).toEqual([]);
+		expect(document.cookie).toContain("ck_consent=%7B");
 	});
 
-	it("without a configured domain only host deletions are written (choice, cleanup and the old tool's cookie)", () => {
+	it("without a configured domain no registrable-domain deletion is written: the host's and the full hostname's only (choice, cleanup and the old tool's cookie)", () => {
 		page({ config: { ...CONFIG, domain: undefined } });
 		document.cookie = "previous-tool-consent=x; Path=/";
 		document.cookie = "_ga=1; Path=/";
 		runHead();
 		runKit();
 		layer1("reject").click();
-		expect(cookieWrites.filter((w) => w.includes("Domain="))).toEqual([]);
-		expect(cookieWrites).toEqual(expect.arrayContaining(["previous-tool-consent" + EXPIRED, "_ga" + EXPIRED, "ck_consent" + EXPIRED]));
+		expect(cookieWrites.filter((w) => w.includes("Domain=") && !w.endsWith("; Domain=" + HOST))).toEqual([]);
+		expect(cookieWrites).toEqual(expect.arrayContaining(["previous-tool-consent", "_ga", "ck_consent"].flatMap((n) => [n + EXPIRED, onHost(n)])));
+	});
+
+	it("a page served on the configured domain itself (domain = the full hostname) writes that deletion once, not twice", () => {
+		page({ config: { ...CONFIG, domain: HOST } });
+		document.cookie = "previous-tool-consent=x; Path=/";
+		cookieWrites = [];
+		runHead();
+		runKit();
+		expect(cookieWrites).toEqual(["previous-tool-consent" + EXPIRED, onHost("previous-tool-consent")]);
 	});
 
 	it("the stored cookie is read back as a valid choice by the head snippet on the next page", () => {
@@ -736,9 +753,9 @@ describe("cleanup and withdrawal", () => {
 		localStorage.setItem("other", "1");
 		cookieWrites = [];
 	}
-	const deletions = (name: string) => [name + EXPIRED, name + EXPIRED + "; Domain=example.test"];
+	const deletions = (name: string) => [name + EXPIRED, name + EXPIRED + "; Domain=example.test", onHost(name)];
 
-	it("reject deletes _ga, _ga_*, _gcl_* on the host AND the registrable domain and localStorage _gcl_ls; decoys survive", () => {
+	it("reject deletes _ga, _ga_*, _gcl_* on the host, the registrable domain AND the full hostname, and localStorage _gcl_ls; decoys survive", () => {
 		boot();
 		seedTracking();
 		layer1("reject").click();
@@ -1099,14 +1116,48 @@ describe("a page that stays alive — back from the back/forward cache, or a tab
 });
 
 describe("the previous tool's cookie", () => {
-	it("a previous consent tool's cookie (previous-tool-consent) is deleted on the host and the domain at boot", () => {
+	it("a previous consent tool's cookie (previous-tool-consent) is deleted on the host, the domain and the full hostname at boot", () => {
+		expect(location.hostname).toBe(HOST);
 		page();
 		document.cookie = "previous-tool-consent=id:abc,consent:yes; Path=/";
 		cookieWrites = [];
 		runHead();
 		runKit();
-		expect(cookieWrites).toEqual(["previous-tool-consent" + EXPIRED, "previous-tool-consent" + EXPIRED + "; Domain=example.test"]);
+		expect(cookieWrites).toEqual(["previous-tool-consent" + EXPIRED, "previous-tool-consent" + EXPIRED + "; Domain=example.test", onHost("previous-tool-consent")]);
 		expect(cookieNames()).toEqual([]);
+	});
+
+	// A previous tool that set its cookie with Domain=<the full host> left `.www.example.test`: a domain cookie that no
+	// host-only deletion and no Domain=example.test deletion removes. happy-dom keys a Domain=<host> cookie like the
+	// host-only one, so its jar cannot hold that copy apart: the deletions are asserted on the written strings.
+	it.each([
+		["a reject", undefined, () => layer1("reject").click(), 0],
+		[
+			"a withdrawal",
+			stored({ v: 2, a: 1, m: 1, t: 1 }),
+			() => {
+				footerLink().click();
+				inDialog("reject").click();
+			},
+			1,
+		],
+	] as const)("%s: the old tool's cookie (at boot) and the denied categories' cookies (in the decision) are deleted on the full hostname too; the new choice stays", (_label, cookie, decide, reloads) => {
+		page({ cookie });
+		document.cookie = "previous-tool-consent=x; Path=/";
+		cookieWrites = [];
+		runHead();
+		runKit();
+		expect(cookieWrites).toEqual(["previous-tool-consent" + EXPIRED, "previous-tool-consent" + EXPIRED + "; Domain=example.test", onHost("previous-tool-consent")]);
+		for (const c of ["_ga=GA1.1.1", "_gcl_au=1.1.1"]) document.cookie = `${c}; Path=/`;
+		cookieWrites = [];
+		decide();
+		expect(reloadSpy).toHaveBeenCalledTimes(reloads);
+		expect(cookieWrites).toEqual(expect.arrayContaining([onHost("_ga"), onHost("_gcl_au")]));
+		const write = cookieWrites.findIndex((w) => w.startsWith("ck_consent=%7B"));
+		expect(write).toBeGreaterThan(cookieWrites.indexOf(onHost("ck_consent")));
+		expect(cookieWrites.slice(write + 1).filter((w) => w.startsWith("ck_consent="))).toEqual([]);
+		expect(cookieNames()).toEqual(["ck_consent"]);
+		expect(api().get()).toEqual({ analytics: false, marketing: false, decided: true, revision: 2 });
 	});
 
 	it("nothing is written when it is absent", () => {

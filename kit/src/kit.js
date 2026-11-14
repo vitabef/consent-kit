@@ -10,9 +10,9 @@
  *   1. one click listener on document for every [data-ck-action] (accept | reject | save),
  *      [data-ck-open] (layer-1 „Einstellungen“, the footer link — added later too) and
  *      [data-ck-close]; consentKit.open() is replaced (a queued call opens now);
- *   2. deletes a previous consent tool's cookies (config.legacy, e.g. `previous-tool-consent`) on the host and the
- *      registrable domain, and runs the cleanup of every category that is not granted — undecided, GPC and a
- *      denied choice alike: no consent, no tracking cookies;
+ *   2. deletes a previous consent tool's cookies (config.legacy, e.g. `previous-tool-consent`) on the host, the
+ *      registrable domain and the full hostname, and runs the cleanup of every category that is not granted —
+ *      undecided, GPC and a denied choice alike: no consent, no tracking cookies;
  *   3. a decided visitor: activates the granted `script[type="text/plain"][data-consent]` and dispatches
  *      `consentkit:change` ONCE (detail = consentKit.get()). Consumers read consentKit.get() FIRST and then listen
  *      to `consentkit:change`: a listener registered after this file ran (a later defer / async / module script)
@@ -28,8 +28,8 @@
  * the visitor prefers reduced motion. A decision — or one followed from another tab — removes the height, the
  * spacer, the observer and that check.
  *
- * A decision (a click) runs, in this order: delete every copy of the choice cookie (host and registrable
- * domain — a stale domain copy would otherwise be read first), write it (6 months, SameSite=Lax; Path=/,
+ * A decision (a click) runs, in this order: delete every copy of the choice cookie (host, registrable domain
+ * and full hostname — a stale domain copy would otherwise be read first), write it (6 months, SameSite=Lax; Path=/,
  * Secure on https), the Consent Mode update (consentKit._u — the head snippet's one implementation:
  * url_passthrough only with marketing), the cleanup of every denied category, the activation, `consentkit:change`,
  * the consent record (fetch keepalive, credentials "omit", mode "no-cors" — text/plain, no preflight, no
@@ -84,10 +84,14 @@
 
   /* ---------- cookies & storage ---------- */
   const names = () => (d.cookie ? d.cookie.split("; ").map((c) => c.split("=")[0]) : []);
+  /** Deletes a cookie (Path=/) on the host, on the configured domain and on the full hostname: a domain cookie
+   *  set with `Domain=www.example.com` (a previous tool's, a tag's) survives the other two deletions. */
   const drop = (name) => {
     const gone = name + "=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/";
+    const host = w.location.hostname;
     d.cookie = gone;
     if (cfg.domain) d.cookie = gone + "; Domain=" + cfg.domain;
+    if (host !== cfg.domain) d.cookie = gone + "; Domain=" + host;
   };
   /** Deletes a category's cookies (exact names, or a prefix ending in `*`) and localStorage keys. */
   const clean = (category) => {
