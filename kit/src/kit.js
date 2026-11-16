@@ -28,16 +28,19 @@
  * until sizing has started. Still at boot: a queued consentKit.open() opens the dialog (`ck-settings` on <html>), and
  * a decided visitor's granted tags are activated (inserted next to their originals). An engine that lists paint
  * timing but delivers no buffered entry to a late boot never reports: kit.css's 30vh padding and no spacer until the
- * first keyboard focus, whose check starts sizing after 120 frames.
+ * first keyboard focus, whose check starts sizing after 120 frames. The same count starts the sizing early when the
+ * first contentful paint itself comes late — more than 120 frames after a keyboard focus before it (an autofocus
+ * field; text held back by a blocking web font): the spacer and the height then come before that paint.
  *
  * Layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured): while it is on screen (undecided), its height —
  * kept current by a ResizeObserver from the first contentful paint on, without one measured then and at every focus
- * check — is --ck-layer-h on <html>; kit.css turns it into the scroll-padding-bottom of the root and of <body> and the
- * height of a spacer kit.js appends as the last child of <body> at that paint, so every focused element, the last
- * footer link included, can scroll clear of it. A keyboard focus (:focus-visible) that layer 1 still covers once its
- * position has held still for two frames (an engine that ignores scroll-padding for focus) is scrolled into view to
- * the nearest edge, smooth unless the visitor prefers reduced motion. A decision — or one followed from another tab — removes the height, the
- * spacer, the observer and that check.
+ * check — is --ck-layer-h on <html>; kit.css turns it into the scroll-padding-bottom of the root and of <body> and
+ * the room of a spacer kit.js appends as the last child of <body> at that paint (one per page; none in a <body> that
+ * lays out a row flex or a grid), so every focused element, the last footer link included, can scroll clear of it. A
+ * keyboard focus (:focus-visible) that layer 1 still covers — under its box, with layer 1 on top there, not a host
+ * dialog stacked above it — once its position has held still for two frames (an engine that ignores scroll-padding
+ * for focus) is scrolled into view to the nearest edge, smooth unless the visitor prefers reduced motion. A decision
+ * — or one followed from another tab — removes the height, the spacer, the observer and that check.
  *
  * A decision (a click) runs, in this order: delete every copy of the choice cookie (host, registrable domain
  * and full hostname — a stale domain copy would otherwise be read first), write it (6 months, SameSite=Lax; Path=/,
@@ -78,14 +81,14 @@
   const classes = html.classList; // the one token list of <html> ([SameObject])
   const found = d.querySelector("[data-ck-dialog]");
   // an engine without <dialog>: no settings layer (its openers keep their own href); layer 1 still decides
-  const dialog = found && typeof found.showModal === "function" ? found : null;
+  const dialog = found && found.showModal && found;
   const BANNER = "[data-ck-banner]";
   const DECIDED = "ck-decided";
   const SETTINGS = "ck-settings";
   // where the records go and which site they name: the site's own markup on layer 1 (empty = no records)
   const banner = d.querySelector(BANNER);
-  const endpoint = (banner && banner.getAttribute("data-endpoint")) || "";
-  const site = (banner && banner.getAttribute("data-site")) || "";
+  const endpoint = banner && banner.getAttribute("data-endpoint");
+  const site = banner && banner.getAttribute("data-site");
   let opener = null;
   let shut = true; // the dialog's close handling ran for the current opening
   let reloading = false; // a reload is under way: no further decision on this page (until it is reset)
@@ -146,9 +149,8 @@
   const emit = () => d.dispatchEvent(new CustomEvent("consentkit:change", { detail: api.get() }));
 
   const record = (action) => {
-    if (!endpoint || !site) return;
     // lang: the primary subtag of <html lang>, lower-cased (de-DE → de, EN → en): the service takes exactly de / en
-    try {
+    if (endpoint && site) try {
       fetch(endpoint, {
         method: "POST",
         body: JSON.stringify({ site, v: cfg.revision, a: api._s.a, m: api._s.m, action, lang: html.lang.split("-")[0].toLowerCase() }),
@@ -162,15 +164,15 @@
   };
 
   /* ---------- focus ---------- */
-  /** An element focus can return to: connected, not inside the kit's dialog, not in a hidden layer 1, rendered. */
+  /** An element focus can return to: connected, not inside the kit's dialog, not in a hidden layer 1, rendered.
+   *  `el` is an element or null (the clicked opener, else document.activeElement); the answer is truthy or falsy. */
   const onScreen = (el) =>
-    !!el &&
-    el.nodeType === 1 &&
+    el &&
     el !== d.body &&
     el.isConnected &&
     !el.closest("[data-ck-dialog]") &&
     !(el.closest(BANNER) && classes.contains(DECIDED)) &&
-    el.getClientRects().length > 0;
+    el.getClientRects().length;
   /** The defined landing place when the opener is gone: <main> (else <body>), focusable for the moment. */
   const land = () => {
     const t = d.querySelector("main") || d.body;
@@ -185,28 +187,33 @@
   // While layer 1 is on screen, its height is --ck-layer-h on <html>: kit.css turns it into the scroll-padding-bottom
   // of the root and of <body> and the height of the spacer, an empty block kit.js keeps as the last child of <body>.
   // A ResizeObserver keeps it current without a layout forced at boot; 0 — layer 1 hidden behind the open dialog —
-  // keeps the last height, so nothing behind the modal moves. A kit whose page a newer head snippet took over keeps
-  // its observer connected, but inert: it writes nothing any more (the new kit, once booted, takes the spacer over).
+  // keeps the last height, so nothing behind the modal moves, a host's UI lifted by it included. A kit whose page a
+  // newer head snippet took over keeps its observer connected, but inert: it writes nothing any more (the new kit,
+  // once booted, puts its own spacer in place of the old one).
   // The spacer and the observer come after the first contentful paint (until then the padding is kit.css's 30vh
   // fallback and there is no spacer): appended at boot, the spacer would change <body>, and the observer's first
   // report would write to <html>, inside the first paint's task.
   const LAYER_H = "--ck-layer-h";
   let sizer = null;
-  let spacer = null; // set once sizing has started
+  let spacer = null; // set once sizing has started (in <body> only where it is room at the page end)
   let painted = null; // the paint observer (disconnected at the first contentful paint or a decision)
   const put = (h) => {
     if (h && w.consentKit === api) html.style.setProperty(LAYER_H, h + "px");
   };
   const measure = () => put(banner.getBoundingClientRect().height);
+  /** Removes every spacer of the page: a kit this one replaced (a second init, a re-insert) may have left its own. */
+  const unspace = () => d.querySelectorAll("#ck-sp").forEach((el) => el.remove());
   /** Starts sizing — the spacer at the end of the page and the height: once, on a page this kit still owns, while
-   *  layer 1 is undecided. One spacer: a kit before this one, on a page a newer head snippet took over, may have
-   *  left its own. */
+   *  layer 1 is undecided. One spacer, this kit's own; in <body> only where <body> stacks its children — in a row
+   *  flex or a grid it would be a column or a cell beside the content, not room at the page end. */
   const size = () => {
     if (spacer || w.consentKit !== api || classes.contains(DECIDED)) return;
-    spacer = d.getElementById("ck-sp") || d.createElement("div");
+    unspace();
+    spacer = d.createElement("div");
     spacer.id = "ck-sp";
     spacer.setAttribute("aria-hidden", "true");
-    d.body.appendChild(spacer);
+    const s = getComputedStyle(d.body);
+    if (!/grid|flex(?!column$)/.test(s.display + s.flexDirection)) d.body.appendChild(spacer); // "flexcolumn" stays
     if (w.ResizeObserver) (sizer = new w.ResizeObserver(measure)).observe(banner);
     else measure();
   };
@@ -221,13 +228,15 @@
   /** A keyboard focus that layer 1 still covers after the browser's own focus scroll (an engine that ignores
    *  scroll-padding for focus) is scrolled clear — to the nearest edge, smooth unless the visitor prefers reduced
    *  motion. It is checked once its position has held still for two frames (120 at the latest), so a smooth focus
-   *  scroll still under way is never restarted. Covered = overlapping layer 1's box: an element below the
-   *  viewport (a host's focus with preventScroll) is not; an element taller than the space above layer 1 that
-   *  already shows stays; a hidden layer 1 (the dialog open, or decided meanwhile) has no height. Without an
+   *  scroll still under way is never restarted. Covered = overlapping layer 1's box, with layer 1 what shows there
+   *  (the topmost element where the two meet): an element below the viewport (a host's focus with preventScroll) is
+   *  not, nor one in a host dialog stacked above layer 1; an element taller than the space above layer 1 that
+   *  already shows stays; a hidden layer 1 (the dialog open, or decided meanwhile) covers nothing. Without an
    *  observer every check measures layer 1 again (a rotation). Before sizing has started (a focus before the first
    *  contentful paint: an autofocus field) a check only reads the layout: it writes nothing and counts no frame as
    *  still, nor the first one after the start — the height is there by the frame after it. A check still waiting
-   *  for sizing at its 120th frame (an engine that delivers no paint entry) starts it; the next check decides. */
+   *  for sizing at its 120th frame (no paint entry, or a first contentful paint later than that) starts it; the
+   *  next check decides. */
   const uncover = (e) => {
     const t = e.target;
     let top; // the target's top a frame earlier — none (null) before sizing has started
@@ -241,7 +250,12 @@
         if (n > 119) size(); // the last frame it waits: no sizing yet (no paint entry delivered) starts it now
         top = spacer && r.top;
         w.requestAnimationFrame(check);
-      } else if (b.height && r.bottom > b.top && r.top < b.bottom && (r.top >= b.top || r.height < b.top)) {
+      } else if (
+        r.bottom > b.top &&
+        (r.top >= b.top || r.height < b.top) &&
+        // layer 1 on top there: hit-tested at the element's middle, 1px below the lower of the two top edges (y = top)
+        banner.contains(d.elementFromPoint(r.left + r.width / 2, Math.max(r.y, b.y) + 1))
+      ) {
         t.scrollIntoView({ block: "nearest", behavior: w.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
       }
     };
@@ -252,7 +266,7 @@
     classes.add(DECIDED);
     if (painted) painted.disconnect();
     if (sizer) sizer.disconnect();
-    if (spacer) spacer.remove();
+    unspace();
     html.style.removeProperty(LAYER_H);
     d.removeEventListener("focusin", uncover, true);
   };
@@ -274,7 +288,7 @@
   /** Returns true when the decision withdrew a grant: the page is then reloading. */
   const decide = (a, m, action) => {
     const prev = api._s;
-    const withdrawn = !!((prev.a && !a) || (prev.m && !m));
+    const withdrawn = (prev.a && !a) || (prev.m && !m);
     api._s = { a, m, d: 1, g: 0 };
     drop(cfg.cookie);
     d.cookie =
@@ -382,12 +396,15 @@
   const CHOICE = { accept: () => [1, 1], reject: () => [0, 0], save: () => [checked("analytics"), checked("marketing")] };
   d.addEventListener("click", (e) => {
     if (w.consentKit !== api) return; // a newer head snippet owns the page
-    const t = e.target && e.target.closest ? e.target.closest("[data-ck-action],[data-ck-open],[data-ck-close]") : null;
+    // a click dispatched on the document itself has no closest()
+    const t = e.target.closest && e.target.closest("[data-ck-action],[data-ck-open],[data-ck-close]");
     if (!t) return;
     if (t.hasAttribute("data-ck-open")) {
-      if (!dialog) return; // no settings layer here: the opener's own href is the fallback
-      e.preventDefault();
-      open(t);
+      // without a settings layer the opener's own href is the fallback
+      if (dialog) {
+        e.preventDefault();
+        open(t);
+      }
       return;
     }
     if (t.hasAttribute("data-ck-close")) {
@@ -461,11 +478,12 @@
 
   const legacy = cfg.legacy || [];
   names().forEach((n) => {
-    if (legacy.indexOf(n) !== -1) drop(n);
+    if (legacy.includes(n)) drop(n);
   });
   if (!api._s.a) clean("analytics");
   if (!api._s.m) clean("marketing");
   if (api._s.d) {
+    unspace(); // a page this kit took over decided: the spacer of the kit before it goes too
     activate();
     emit();
   } else if (banner) {

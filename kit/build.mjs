@@ -33,8 +33,10 @@ export const COMMITTED_DIST = path.join(REPO, "dist");
 export const fileText = (text) => text + "\n";
 
 /** Brotli budgets in bytes: ~1.5 × the first build (608 / 1443 / 1672 B), so a real regression fails the
- *  test; the hard ceilings stay 1 KB / 3 KB / 6 KB (the kit sits on every page of a site). */
-export const BUDGETS = { "head.js": 900, "kit.css": 2200, "kit.js": 2500 };
+ *  test; the hard ceilings stay 1 KB / 3 KB / 6 KB (the kit sits on every page of a site). kit.js: 2550 since
+ *  0.1.4 — the page-end spacer's layout check, one spacer per page and the hit test of a covered focus did not fit
+ *  2500 after cutting elsewhere. */
+export const BUDGETS = { "head.js": 900, "kit.css": 2200, "kit.js": 2550 };
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), "utf8");
 

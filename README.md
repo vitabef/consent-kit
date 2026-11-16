@@ -16,7 +16,7 @@ configuration, deploy and admin access.
 
 ## Status
 
-Version 0.1.3, maintained for the maintainer's own sites. There is no support, and issues and pull requests are not
+Version 0.1.4, maintained for the maintainer's own sites. There is no support, and issues and pull requests are not
 accepted. Security reports: [SECURITY.md](SECURITY.md).
 
 ## Requirements
@@ -119,7 +119,7 @@ The gate runs five steps and stops at the first failure (exit code 0 = push-read
    built-in `node:sqlite` module needs no flag: 22.13 or later in the 22 line, 23.4 or later (`engines` in
    `package.json`).
 5. **Kit build + brotli budgets** — `node kit/build.mjs` writes `kit/dist/`, `dist/` and the Hugo adapter's generated
-   files, and exits 1 when a file is over its brotli budget: `head.js` 900 B, `kit.css` 2,200 B, `kit.js` 2,500 B
+   files, and exits 1 when a file is over its brotli budget: `head.js` 900 B, `kit.css` 2,200 B, `kit.js` 2,550 B
    (actual sizes in `kit/dist/sizes.json`).
 
 Single steps: `npm run typecheck` (both type checks), `npm test`, `npm run build`. After a change to `kit/src/` or

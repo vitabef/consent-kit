@@ -101,10 +101,12 @@
    30vh + 0.5rem until it is measured) of the root and of <body> — for a <body> that is a scroll container itself
    (height: 100% with overflow, an app shell) — and the height of the spacer kit.js keeps as the last child of
    <body> (#ck-sp, an empty block), so that the last elements — the footer's links — can scroll above layer 1 too,
-   whatever the host does with <html> and <body> (height: 100%, flex). The spacer's geometry is forced (an id,
-   !important), so that no host rule for body's children shrinks or moves it — flex: none keeps it whole in a flex
-   column with a fixed height. Without a measured height it has none; in print, decided or with kit.js off it is
-   not shown. */
+   whatever the host does with <html> and <body> (height: 100%, a flex column). Its geometry is forced (an id,
+   !important), so that no host rule for body's children (body > div { … }) shrinks, grows or moves it: its sizes,
+   position: static, the last place in a flex order. In a flex column it takes no room in the line (flex-basis 0): a
+   footer pushed to the bottom of a min-height body stays where it is (no layout shift); its out-of-flow ::before
+   keeps the room after it. Without a measured height it has none; in print, decided or with kit.js off it is not
+   shown. */
 html:not(.ck-decided):not(.ck-off),
 html:not(.ck-decided):not(.ck-off) > body {
   scroll-padding-bottom: calc(var(--ck-layer-h, 30vh) + 0.5rem);
@@ -117,13 +119,24 @@ html:not(.ck-decided):not(.ck-off) > body {
 @media screen {
   html:not(.ck-decided):not(.ck-off) #ck-sp {
     display: block !important;
-    flex: none !important;
+    flex: 0 0 0 !important;
     height: calc(var(--ck-layer-h) + 0.5rem) !important;
+    min-height: 0 !important;
+    max-height: none !important;
     margin: 0 !important;
     padding: 0 !important;
     border: 0 !important;
+    position: static !important;
+    order: 2147483647 !important;
     visibility: hidden !important;
     pointer-events: none !important;
+  }
+
+  html:not(.ck-decided):not(.ck-off) #ck-sp::before {
+    content: "";
+    position: absolute;
+    width: 1px;
+    height: calc(var(--ck-layer-h) + 0.5rem);
   }
 }
 
