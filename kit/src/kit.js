@@ -20,17 +20,19 @@
  * NO network request before a decision: no record, no beacon, no gated script.
  *
  * The first paint: the boot is a task of its own (it may come before the first paint) and, for an undecided visitor,
- * changes no attribute of <html> or <body> and no child of <body> — a host script observing them would otherwise run
- * inside the first paint's task, and the paint would wait for that script's request. `ck-off` is removed only when
- * <html> has it; the page-end spacer and layer 1's height come after the first contentful paint (a buffered
- * PerformanceObserver on `paint`; at once without paint timing). Nothing of this file writes inside the first paint's
- * task: a keyboard focus before it (an autofocus field) is checked in animation frames that only read the layout
- * until sizing has started. Still at boot: a queued consentKit.open() opens the dialog (`ck-settings` on <html>), and
- * a decided visitor's granted tags are activated (inserted next to their originals). An engine that lists paint
- * timing but delivers no buffered entry to a late boot never reports: kit.css's 30vh padding and no spacer until the
- * first keyboard focus, whose check starts sizing after 120 frames. The same count starts the sizing early when the
- * first contentful paint itself comes late — more than 120 frames after a keyboard focus before it (an autofocus
- * field; text held back by a blocking web font): the spacer and the height then come before that paint.
+ * changes no attribute of <html> or <body> and no child of <body> except a stale #ck-sp, which it removes (a replaced
+ * kit's spacer, or a copy in the served markup — that one in the boot task, before the first paint) — a host script
+ * observing them would otherwise run inside the first paint's task, and the paint would wait for that script's
+ * request. `ck-off` is removed only when <html> has it; the page-end spacer and layer 1's height come after the first
+ * contentful paint (a buffered PerformanceObserver on `paint`; at once without paint timing). Nothing of this file
+ * writes inside the first paint's task: a keyboard focus before it (an autofocus field) is checked in animation
+ * frames that only read the layout until sizing has started. Still at boot: a queued consentKit.open() opens the
+ * dialog (`ck-settings` on <html>), and a decided visitor's granted tags are activated (inserted next to their
+ * originals). An engine that lists paint timing but delivers no buffered entry to a late boot never reports:
+ * kit.css's 30vh padding and no spacer until the first keyboard focus, whose check starts sizing after 120 frames.
+ * The same count starts the sizing early when the first contentful paint itself comes late — more than 120 frames
+ * after a keyboard focus before it (an autofocus field; text held back by a blocking web font): the spacer and the
+ * height then come before that paint.
  *
  * Layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured): while it is on screen (undecided), its height —
  * kept current by a ResizeObserver from the first contentful paint on, without one measured then and at every focus

@@ -64,17 +64,19 @@ Why this order:
   granted without kit.js; a later boot shows it again.
 - kit.js writes nothing to the page inside the first paint's task. Its boot is a task of its own, which may come
   before the first paint; for an undecided visitor it changes no attribute of `<html>` or `<body>` and no child of
-  `<body>`. It removes `ck-off` only when `<html>` has it: removing an absent class still rewrites the `class`
-  attribute when `<html>` has one. The page-end spacer and the first layer's height come only after the first
-  contentful paint: a buffered `PerformanceObserver` on `paint` starts them at the `first-contentful-paint` entry (a
-  `first-paint` entry alone does not), at once where paint timing is missing. A keyboard focus before that paint (an
-  autofocus field) is checked in animation frames that only read the layout until then — or until its 120th frame,
-  which starts them before a later paint ([accessibility](#accessibility), Focus not obscured, Limits). A site script
-  that observes `<html>` or `<body>` (a `MutationObserver`) would otherwise run inside the first paint's task, and
-  Lighthouse's simulated throttling would make the first paint wait for that script's requests. The height goes on
-  `<html>` with `style.setProperty` (CSSOM, allowed under any Content Security Policy), never in a `<style>` element.
-  What the boot still changes: a `consentKit.open()` queued before it opens the dialog (`ck-settings` on `<html>`),
-  and a decided visitor's granted tags are activated (inserted next to their originals).
+  `<body>` except a stale `#ck-sp`, which it removes (a replaced kit's spacer, or a copy in the served markup — that
+  one in the boot task, before the first paint). It removes `ck-off` only when `<html>` has it: removing an absent
+  class still rewrites the `class` attribute when `<html>` has one. The page-end spacer and the first layer's height
+  come only after the first contentful paint: a buffered `PerformanceObserver` on `paint` starts them at the
+  `first-contentful-paint` entry (a `first-paint` entry alone does not), at once where paint timing is missing. A
+  keyboard focus before that paint (an autofocus field) is checked in animation frames that only read the layout
+  until then — or until its 120th frame, which starts them before a later paint ([accessibility](#accessibility),
+  Focus not obscured, Limits). A site script that observes `<html>` or `<body>` (a `MutationObserver`) would
+  otherwise run inside the first paint's task, and Lighthouse's simulated throttling would make the first paint wait
+  for that script's requests. The height goes on `<html>` with `style.setProperty` (CSSOM, allowed under any Content
+  Security Policy), never in a `<style>` element. What the boot still changes: a `consentKit.open()` queued before it
+  opens the dialog (`ck-settings` on `<html>`), and a decided visitor's granted tags are activated (inserted next to
+  their originals).
 
 `head.js` and `kit.js` ship as a pair: kit.js calls the head snippet's internals (`consentKit._u`, `consentKit._r`), so
 a page always carries the two files of one build. Next to a head snippet without the reader (`_r`), kit.js still
