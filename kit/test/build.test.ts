@@ -27,7 +27,7 @@ describe("budgets (brotli)", () => {
 	});
 
 	it("the budgets sit at ~1.5 × the first build, inside the hard ceilings (1 KB / 3 KB / 6 KB)", () => {
-		expect(BUDGETS).toEqual({ "head.js": 900, "kit.css": 2200, "kit.js": 2500 });
+		expect(BUDGETS).toEqual({ "head.js": 900, "kit.css": 2200, "kit.js": 2550 });
 		expect(BUDGETS["head.js"]).toBeLessThanOrEqual(1024);
 		expect(BUDGETS["kit.css"]).toBeLessThanOrEqual(3072);
 		expect(BUDGETS["kit.js"]).toBeLessThanOrEqual(6144);

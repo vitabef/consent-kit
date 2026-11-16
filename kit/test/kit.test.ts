@@ -16,7 +16,8 @@
  * happy-dom has no native dialog behaviour (no Escape, no focus return, no closedby): Escape is staged as
  * the browser's `cancel` + close(); the kit's own focus handling and backdrop fallback are what is tested.
  * happy-dom paints nothing: every test runs with a PerformanceObserver stand-in that supports paint timing, and
- * `paint()` is the browser reporting the first paint and the first contentful paint.
+ * `paint()` is the browser reporting the first paint and the first contentful paint. It hit-tests nothing either:
+ * the focus tests stand in for document.elementFromPoint (layer 1 is what shows wherever its box is).
  */
 import { buildAssets, renderBanner, configBlock, strings } from "../build.mjs";
 
@@ -166,6 +167,7 @@ beforeEach(() => {
 	win().dataLayer = [];
 	document.documentElement.className = "";
 	document.documentElement.removeAttribute("style"); // an earlier kit's layer-1 height (--ck-layer-h)
+	document.body.removeAttribute("style"); // a test's own <body> layout
 	document.documentElement.lang = "de";
 });
 
@@ -677,6 +679,40 @@ describe("a decision", () => {
 		expect(cookieWrites).toEqual([]);
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
+
+	it.each(["hasOwnProperty", "__proto__", "constructor"])(
+		"an action named like an Object.prototype member (data-ck-action=\"%s\") calls and changes nothing: no default prevented, no error, nothing written, sent, pushed, dispatched or reloaded, the dialog open, Object.prototype as it was",
+		(action) => {
+			boot();
+			layer1Settings().click();
+			const odd = document.createElement("button");
+			odd.setAttribute("data-ck-action", action);
+			dialog().appendChild(odd);
+			const close = vi.spyOn(dialog(), "close");
+			const consentUpdate = vi.spyOn(api() as unknown as { _u: (a: number, m: number) => void }, "_u");
+			const proto = Object.getOwnPropertyNames(Object.prototype).sort();
+			const errors: unknown[] = [];
+			const onError = (e: ErrorEvent) => errors.push(e.error);
+			window.addEventListener("error", onError);
+			const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+			odd.dispatchEvent(click);
+			window.removeEventListener("error", onError);
+			expect(click.defaultPrevented).toBe(false);
+			expect(errors).toEqual([]);
+			expect(dialog().open).toBe(true);
+			expect(close).not.toHaveBeenCalled();
+			expect(consentUpdate).not.toHaveBeenCalled();
+			expect(cookieWrites).toEqual([]);
+			expect(fetchSpy).not.toHaveBeenCalled();
+			expect(reloadSpy).not.toHaveBeenCalled();
+			expect(updates()).toEqual([]);
+			expect(events).toEqual([]);
+			expect(api().get()).toEqual({ analytics: false, marketing: false, decided: false, revision: 2 });
+			expect(decided()).toBe(false);
+			expect(Object.getOwnPropertyNames(Object.prototype).sort()).toEqual(proto);
+			expect(Object.getPrototypeOf({})).toBe(Object.prototype);
+		},
+	);
 });
 
 describe("no network before a decision", () => {
@@ -1426,16 +1462,25 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		observers[0]?.report();
 		return layer;
 	};
-	/** kit.css's rules that make room for layer 1 (both read --ck-layer-h), and the elements each applies to now:
-	 *  ROOM = the scroll padding to <html> and <body>, the height to the spacer; NO_ROOM = none. */
+	/** kit.css's rules that make room for layer 1 (all read --ck-layer-h), and the elements each applies to now:
+	 *  ROOM = the scroll padding to <html> and <body>, the height to the spacer and to its ::before (minified
+	 *  `:before`, matched on the spacer itself); NO_ROOM = none. */
 	const room = () => cssRules().filter(([, , body]) => body.includes("--ck-layer-h"));
-	const roomApplies = () => room().map(([, selectors]) => Array.from(document.querySelectorAll(selectors), (el) => el.tagName.toLowerCase()));
-	const ROOM = [["html", "body"], ["div"]];
-	const NO_ROOM = [[], []];
+	const roomApplies = () =>
+		room().map(([, selectors]) =>
+			Array.from(document.querySelectorAll(selectors.replace(/:before$/, "")), (el) => el.tagName.toLowerCase() + (selectors.endsWith(":before") ? ":before" : "")),
+		);
+	const ROOM = [["html", "body"], ["div"], ["div:before"]];
+	const NO_ROOM = [[], [], []];
 
 	beforeEach(() => {
 		observers.length = 0;
 		vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+		// happy-dom hit-tests nothing: layer 1 (fixed above the page) is what shows wherever its box is
+		vi.spyOn(document, "elementFromPoint").mockImplementation((x, y) => {
+			const r = banner().getBoundingClientRect();
+			return x >= r.left && x < r.right && y >= r.top && y < r.bottom ? banner() : document.body;
+		});
 	});
 
 	it("undecided: layer 1's height becomes --ck-layer-h on <html> at the observer's first report — the observer started after the first paint, no layout forced at boot — and follows every resize; hidden behind the open dialog (0) it keeps the last height", () => {
@@ -1509,7 +1554,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		expect(layerHeight()).toBe("315px");
 	});
 
-	it("kit.css: the scroll padding of <html> and <body> (a <body> that scrolls itself) is the height + 0.5rem (30vh until it is measured), the spacer's height the same (none until measured; screen only; its geometry forced) — both only while the visitor is undecided and kit.js has booted; no rule on html::after", () => {
+	it("kit.css: the scroll padding of <html> and <body> (a <body> that scrolls itself) is the height + 0.5rem (30vh until it is measured), the spacer's height the same, and its ::before's (none until measured; screen only; its geometry forced) — all only while the visitor is undecided and kit.js has booted; no rule on html::after", () => {
 		expect(room()).toEqual([
 			[
 				"",
@@ -1519,8 +1564,9 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 			[
 				"screen",
 				"html:not(.ck-decided):not(.ck-off) #ck-sp",
-				"display:block!important;flex:none!important;height:calc(var(--ck-layer-h) + .5rem)!important;margin:0!important;padding:0!important;border:0!important;visibility:hidden!important;pointer-events:none!important",
+				"display:block!important;flex:0 0 0!important;height:calc(var(--ck-layer-h) + .5rem)!important;min-height:0!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;position:static!important;order:2147483647!important;visibility:hidden!important;pointer-events:none!important",
 			],
+			["screen", "html:not(.ck-decided):not(.ck-off) #ck-sp:before", 'content:"";position:absolute;width:1px;height:calc(var(--ck-layer-h) + .5rem)'],
 		]);
 		expect(cssRules().filter(([, selectors]) => selectors.includes("#ck-sp"))[0]).toEqual(["", "#ck-sp", "display:none!important"]);
 		expect(assets["kit.css"]).not.toMatch(/html[^{},]*::?after/);
@@ -1530,6 +1576,92 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 			document.documentElement.className = cls;
 			expect(roomApplies()).toEqual(NO_ROOM);
 		}
+	});
+
+	/** The shipped kit.css in the page, followed by a host's own rules — happy-dom cascades both. */
+	const withCss = (hostCss: string) => document.head.insertAdjacentHTML("beforeend", `<style>${assets["kit.css"]}</style><style>${hostCss}</style>`);
+
+	it("a host rule for the children of <body> (body > div { … }) neither sizes nor moves the spacer: min-height 0, max-height none, position static, the last place in a flex order, flex 0 0 0 — set by the host, each of them cost the room or moved a pushed-down footer in Chromium; float stays the host's (a floated spacer still ends the page)", () => {
+		page();
+		withCss("body > div { min-height: 60vh; max-height: 20px; position: absolute; order: -1; flex: 1 1 auto; }");
+		at(banner(), LAYER);
+		runHead();
+		runKit();
+		paint();
+		observers[0]?.report();
+		const s = getComputedStyle(spacer() as HTMLElement);
+		expect([s.minHeight, s.maxHeight, s.position, s.order, s.flex]).toEqual(["0", "none", "static", "2147483647", "0 0 0px"]);
+	});
+
+	it("in a flex column the spacer takes no room in the line (flex-basis 0, no automatic minimum): a footer that margin-top: auto pushes to the bottom of a min-height <body> stays where it is — no layout shift — and the spacer's out-of-flow ::before, 1px wide and as high as the spacer, keeps the room after it", () => {
+		page();
+		document.body.setAttribute("style", "display: flex; flex-direction: column; min-height: 100vh");
+		withCss("footer { margin-top: auto; }");
+		at(banner(), LAYER);
+		runHead();
+		runKit();
+		paint();
+		observers[0]?.report();
+		expect(document.body.lastElementChild).toBe(spacer());
+		const s = getComputedStyle(spacer() as HTMLElement);
+		expect([s.flex, s.minHeight]).toEqual(["0 0 0px", "0"]);
+		expect(cssRules()).toContainEqual(["screen", "html:not(.ck-decided):not(.ck-off) #ck-sp:before", 'content:"";position:absolute;width:1px;height:calc(var(--ck-layer-h) + .5rem)']);
+	});
+
+	it.each([
+		["a row flex (display: flex): no spacer", "display: flex", false],
+		["a reversed row flex: no spacer", "display: flex; flex-direction: row-reverse", false],
+		["a reversed column flex (its last child on top): no spacer", "display: flex; flex-direction: column-reverse", false],
+		["an inline row flex: no spacer", "display: inline-flex", false],
+		["a grid: no spacer", "display: grid", false],
+		["an inline grid: no spacer", "display: inline-grid", false],
+		["a column flex (the sticky-footer pattern): the spacer", "display: flex; flex-direction: column", true],
+		["an inline column flex: the spacer", "display: inline-flex; flex-direction: column", true],
+		["a block: the spacer", "display: block", true],
+		["a flow root: the spacer", "display: flow-root", true],
+	] as const)("a <body> laid out as %s — the spacer only where <body> stacks its children (in a row flex or a grid it would be a column or a cell beside the content); the height and the scroll padding either way, all gone at a decision", (_label, css, stacks) => {
+		page();
+		document.body.setAttribute("style", css);
+		at(banner(), LAYER);
+		runHead();
+		runKit();
+		paint();
+		observers[0]?.report();
+		expect(layerHeight()).toBe("285px");
+		expect(roomApplies()[0]).toEqual(["html", "body"]);
+		expect(document.querySelectorAll("#ck-sp")).toHaveLength(stacks ? 1 : 0);
+		if (stacks) expect(document.body.lastElementChild).toBe(spacer());
+		layer1("accept").click();
+		expect(document.querySelectorAll("#ck-sp")).toHaveLength(0);
+		expect(layerHeight()).toBe("");
+	});
+
+	it("a host's own fixed-bottom UI lifted by the height (bottom: var(--ck-layer-h, 0px)) stays where it is while the settings dialog is open — layer 1 hidden, the observer reporting 0 — and through a close without a decision (Escape, the close control), so it is clear of layer 1 the moment layer 1 is back; a decision drops it", () => {
+		const layer = measured();
+		withCss("#toast { position: fixed; bottom: var(--ck-layer-h, 0px); }");
+		$("main").insertAdjacentHTML("beforeend", '<p id="toast">Gespeichert</p>');
+		const lift = () => getComputedStyle($("#toast")).bottom;
+		/** Layer 1 hidden behind the open dialog (display: none: no box), or back: the observer reports either. */
+		const report = (rect: DOMRect) => {
+			layer.mockReturnValue(rect);
+			observers[0]?.report();
+		};
+		expect(lift()).toBe("285px");
+		for (const close of [() => pressEscape(dialog()), () => closeControl().click()]) {
+			layer1Settings().click();
+			report(box(0, 0));
+			expect(layer1Shown()).toBe(false);
+			expect(lift()).toBe("285px");
+			close();
+			expect(layer1Shown()).toBe(true);
+			expect(lift()).toBe("285px"); // clear of layer 1 already, in the same task that brings layer 1 back
+			report(LAYER);
+			expect(lift()).toBe("285px");
+		}
+		layer1Settings().click();
+		report(box(0, 0));
+		inDialog("save").click();
+		expect(lift()).toBe("0px");
 	});
 
 	it.each([
@@ -1632,7 +1764,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		["partly under it", box(370, 20)],
 		["partly under it, partly below the viewport", box(650, 40)],
 		["taller than the space above it, its top under it", box(400, 500)],
-	])("a keyboard focus that layer 1 still covers (%s) is scrolled clear of it once its position has held still for two frames — after the browser's own focus scrolling: the nearest edge, smooth; once", async (_label, rect) => {
+	])("a keyboard focus that layer 1 still covers (%s) is scrolled clear of it once its position has held still for two frames — after the browser's own focus scrolling: the nearest edge, smooth; once — layer 1 on top where the two meet (hit-tested at the element's middle, 1px below the lower top edge)", async (_label, rect) => {
 		motion(false);
 		measured();
 		const link = footerLink();
@@ -1644,6 +1776,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		await frames(1);
 		expect(scroll).toHaveBeenCalledTimes(1);
 		expect(scroll).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
+		expect(document.elementFromPoint).toHaveBeenLastCalledWith(rect.left + rect.width / 2, Math.max(rect.top, LAYER.top) + 1);
 		await frames(3);
 		expect(scroll).toHaveBeenCalledTimes(1);
 	});
@@ -1791,6 +1924,15 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 				return placed(footerLink(), box(600, 20));
 			},
 		],
+		[
+			"an element under layer 1's box inside a host dialog stacked above layer 1 (the dialog is what shows there: layer 1 does not cover it)",
+			() => {
+				measured({ extra: GATED + '<dialog id="host-modal" open><button id="in-modal" type="button">OK</button></dialog>' });
+				const button = placed($("#in-modal"), box(600, 44));
+				vi.spyOn(document, "elementFromPoint").mockReturnValue(button);
+				return button;
+			},
+		],
 	] as const)("no scroll for %s", async (_label, setUp) => {
 		motion(false);
 		const el = setUp();
@@ -1816,15 +1958,16 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		expect(scroll).not.toHaveBeenCalled();
 	});
 
-	it("a newer head snippet and its kit.js: the new kit takes the one spacer over and removes it at a decision; the old kit's observer stays connected, but writes nothing", () => {
+	it("a newer head snippet and its kit.js: the new kit puts its own spacer in place of the old one and removes it at a decision; the old kit's observer stays connected, but writes nothing", () => {
 		const layer = measured();
 		const old = spacer();
 		runHead();
 		runKit();
 		paint(); // the new kit's buffered paint observer: the page has painted long ago
 		expect(document.querySelectorAll("#ck-sp")).toHaveLength(1);
-		expect(spacer()).toBe(old);
-		expect(document.body.lastElementChild).toBe(old);
+		expect(spacer()).not.toBe(old);
+		expect(old?.isConnected).toBe(false);
+		expect(document.body.lastElementChild).toBe(spacer());
 		layer.mockReturnValue(box(352, 315));
 		observers[0]?.report();
 		expect(layerHeight()).toBe("285px");
@@ -1834,6 +1977,31 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		expect(spacer()).toBeNull();
 		expect(layerHeight()).toBe("");
 		expect(observers.map((o) => o.disconnected)).toEqual([false, true]);
+	});
+
+	it("one spacer per page: a kit that replaces another (a second init) on a page that also holds a re-inserted copy of a spacer (markup restored from a snapshot of the live page) leaves exactly one — its own, the last child of <body> — and its decision none", () => {
+		measured(); // the first kit, sized: its spacer at the end of <body>
+		const copy = document.createElement("div");
+		copy.id = "ck-sp";
+		document.body.insertBefore(copy, $("main")); // a copy earlier in the page
+		runHead();
+		runKit();
+		paint();
+		expect(document.querySelectorAll("#ck-sp")).toHaveLength(1);
+		expect(copy.isConnected).toBe(false);
+		expect(document.body.lastElementChild).toBe(spacer());
+		layer1("accept").click();
+		expect(document.querySelectorAll("#ck-sp")).toHaveLength(0);
+	});
+
+	it("one spacer per page: a kit that replaces another and boots decided (its head snippet reads a choice made elsewhere) leaves none — the replaced kit's spacer goes", () => {
+		measured();
+		expect(spacer()).not.toBeNull();
+		elsewhere(stored({ v: 2, a: 1, m: 0, t: now() }));
+		runHead();
+		runKit();
+		expect(decided()).toBe(true);
+		expect(document.querySelectorAll("#ck-sp")).toHaveLength(0);
 	});
 
 	it("focus that moves on before the frame is not chased: only where focus is by then counts", async () => {
@@ -1907,7 +2075,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 			expect(spacer()).toBeNull();
 			expect(layer).not.toHaveBeenCalled();
 			expect(layerHeight()).toBe("");
-			expect(roomApplies()).toEqual([["html", "body"], []]); // the scroll padding (30vh fallback); no spacer yet
+			expect(roomApplies()).toEqual([["html", "body"], [], []]); // the scroll padding (30vh fallback); no spacer yet
 			paint("first-paint");
 			expect(paintObservers[0]?.disconnected).toBe(false);
 			expect(observers).toHaveLength(0);
@@ -2046,6 +2214,29 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 			observers[0]?.report();
 			await frames(1);
 			expect(heights).toEqual(["285px"]);
+		});
+
+		it("a first contentful paint that comes late — more than 120 frames after a keyboard focus before it (text held back by a blocking web font): the focus check starts the sizing at its 120th frame, BEFORE that paint; the paint then disconnects the paint observer and starts nothing again", async () => {
+			motion(false);
+			booted();
+			const link = footerLink();
+			at(link, box(600, 20));
+			const heights = scrollsWithHeight(link);
+			const root = watchRoot();
+			link.focus();
+			await frames(119);
+			expect(root.seen()).toEqual([]);
+			await frames(1);
+			expect([...root.seen()].sort()).toEqual(["body childList"]); // the spacer, before the paint
+			expect(paintObservers[0]?.disconnected).toBe(false);
+			observers[0]?.report();
+			await frames(1);
+			root.stop();
+			expect(heights).toEqual(["285px"]);
+			paint(); // the late first contentful paint
+			expect(paintObservers[0]?.disconnected).toBe(true);
+			expect(observers).toHaveLength(1);
+			expect(document.querySelectorAll("#ck-sp")).toHaveLength(1);
 		});
 	});
 });

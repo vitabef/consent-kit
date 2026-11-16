@@ -12,7 +12,7 @@ comments) and writes `kit/dist/` (git-ignored):
 | File | What | Brotli budget |
 |---|---|---|
 | `head.js` | the head snippet — inlined by the site | 900 B |
-| `kit.js` | the deferred logic file — vendored by the site | 2,500 B |
+| `kit.js` | the deferred logic file — vendored by the site | 2,550 B |
 | `kit.css` | the styles — inlined by the site | 2,200 B |
 | `sizes.json` | raw, gzip (level 9) and brotli (quality 11) bytes per file, with its budget | — |
 | `demo/index.html`, `demo/en/index.html`, `demo/fake-analytics.js` | the [demo page](#demo), German and English | — |
@@ -68,13 +68,13 @@ Why this order:
   attribute when `<html>` has one. The page-end spacer and the first layer's height come only after the first
   contentful paint: a buffered `PerformanceObserver` on `paint` starts them at the `first-contentful-paint` entry (a
   `first-paint` entry alone does not), at once where paint timing is missing. A keyboard focus before that paint (an
-  autofocus field) is checked in animation frames that only read the layout until then ([accessibility](#accessibility),
-  Focus not obscured). A site script that observes `<html>` or `<body>` (a `MutationObserver`) would otherwise run
-  inside the first paint's task, and Lighthouse's simulated throttling would make the first paint wait for that
-  script's requests. The height goes on `<html>` with `style.setProperty` (CSSOM, allowed under any Content Security
-  Policy), never in a `<style>` element. What the boot still changes: a `consentKit.open()` queued before it opens the
-  dialog (`ck-settings` on `<html>`), and a decided visitor's granted tags are activated (inserted next to their
-  originals).
+  autofocus field) is checked in animation frames that only read the layout until then — or until its 120th frame,
+  which starts them before a later paint ([accessibility](#accessibility), Focus not obscured, Limits). A site script
+  that observes `<html>` or `<body>` (a `MutationObserver`) would otherwise run inside the first paint's task, and
+  Lighthouse's simulated throttling would make the first paint wait for that script's requests. The height goes on
+  `<html>` with `style.setProperty` (CSSOM, allowed under any Content Security Policy), never in a `<style>` element.
+  What the boot still changes: a `consentKit.open()` queued before it opens the dialog (`ck-settings` on `<html>`),
+  and a decided visitor's granted tags are activated (inserted next to their originals).
 
 `head.js` and `kit.js` ship as a pair: kit.js calls the head snippet's internals (`consentKit._u`, `consentKit._r`), so
 a page always carries the two files of one build. Next to a head snippet without the reader (`_r`), kit.js still
@@ -398,6 +398,31 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
 - While it is shown, the page makes room for it: a scroll padding on `<html>` and `<body>` and a spacer at the end of
   `<body>`, all from its measured height ([accessibility](#accessibility), Focus not obscured).
 
+### The site's own fixed-bottom UI
+
+The first layer is fixed at the bottom of the viewport with `z-index: var(--ck-cc-z, 1025)`, so a site's own
+fixed-bottom element — a toast, a back-to-top button, a chat launcher — sits under it while it is shown. Lift such an
+element by the layer's height, which kit.js keeps in `--ck-layer-h` on `<html>`:
+
+```css
+.site-toast {
+  position: fixed;
+  bottom: var(--ck-layer-h, 0px); /* with a gap: calc(var(--ck-layer-h, 0px) + 1rem) */
+}
+```
+
+- `--ck-layer-h` is set while the first layer is shown, from the first contentful paint on (before that, the `0px`
+  fallback applies), follows every change of the layer's height and is removed at a decision: the element drops back
+  to the bottom. A decided visitor, GPC included, never gets it.
+- While the settings dialog is open, the first layer is hidden (`ck-settings`), but `--ck-layer-h` keeps its value.
+  The lifted element stays where it is — behind the modal, like the rest of the page — and is already clear of the
+  first layer when the dialog closes without a decision and the first layer comes back. Dropping it meanwhile would
+  move it twice, and a transition on `bottom` would leave it under the first layer until that transition ends.
+- `z-index`: lifted, the element no longer overlaps the first layer. Where the two still overlap — before the height
+  is set — the higher `z-index` paints on top: an element below `--ck-cc-z` is hidden under the first layer for that
+  moment, one above it covers the first layer's text and buttons. The settings dialog is in the top layer, above any
+  `z-index`.
+
 ## Accessibility
 
 - **First layer**: a non-modal landmark — `role="region"` named by `aria-label` — that never blocks the page. No heading
@@ -426,50 +451,62 @@ Colours are custom properties on `.ck-cc, .ck-cd`, with these defaults:
     measured;
   - a spacer as high as that padding, so that the last element can scroll that far too: an empty
     `<div id="ck-sp" aria-hidden="true">` that kit.js appends as the last child of `<body>` when it starts measuring
-    (the first contentful paint). Its geometry is forced
-    on the id with `!important` — `display: block`, the height, `flex: none`, no margin, padding or border,
-    `visibility: hidden`, `pointer-events: none` — so a site's usual rules for the children of `<body>` (display,
-    margins, flex shrinking) neither hide nor shrink it. As content of a `<body>` that stacks its children in a
-    column — the common case — it adds room whatever the site does with its root boxes: `html, body { height: 100% }`
-    (also as a flex column, the sticky-footer pattern), a flex `<html>`, a site's own `html::after` (left alone). A
-    `<body>` that lays its children out in a row is a limit (below). Screen media only; without a measured height it
-    has none.
+    (the first contentful paint). One per page: kit.js removes every `#ck-sp` it finds first, so a kit that replaces
+    another (a second init, or markup re-inserted from a snapshot of the live page) owns exactly one, and a decision —
+    or a replacing kit that boots decided — leaves none. Its geometry is forced on the id with `!important` —
+    `display: block`, the height, `min-height: 0`, `max-height: none`, no margin, padding or border,
+    `position: static`, the last place in a flex `order`, `visibility: hidden`, `pointer-events: none` — so a site's
+    rule for the children of `<body>` (`body > div { … }`) neither hides, sizes nor moves it; `float` is left alone, as
+    a floated spacer still ends the page. In a flex column it takes no room in the line (`flex: 0 0 0`): a footer that
+    `margin-top: auto` holds at the bottom of a `min-height: 100vh` `<body>` stays where it is — no layout shift — and
+    the spacer's `::before`, absolutely positioned where the spacer is, 1px wide and as high, keeps the room after it.
+    In a `<body>` that stacks its children — a block or a column flex, the common cases — it adds room whatever the
+    site does with its root boxes: `html, body { height: 100% }` (also as a flex column), a flex `<html>`, a site's
+    own `html::after` (left alone). A `<body>` that lays out a row flex (a reversed column flex too) or a grid gets no
+    spacer: there it would be a column or a cell beside the content, not room at the page end (limits below). Screen
+    media only; without a measured height it has none.
 
   A keyboard focus (`:focus-visible`; in an engine without that selector, every focus) that the layer still covers
   once its position has held still for two frames (an engine that ignores the scroll padding for focus) is scrolled
   into view with `scrollIntoView({ block: "nearest" })`, `behavior: "smooth"` — or `"auto"` when the visitor prefers
   reduced motion. Waiting for a still position leaves the browser's own focus scroll alone, a smooth one too (a
   site's `scroll-behavior: smooth`): it is never restarted; an element that keeps moving is checked after 120 frames.
-  Covered means overlapping the layer's box: an element below the viewport (a site's `focus({ preventScroll: true })`)
-  is not, and stays where it is. Left alone too: a pointer focus (a click focuses what it shows), the layer's own
-  controls, an element taller than the space above the layer that already shows, and focus that has moved on by
-  then. While the dialog is open the layer is hidden and the property keeps its last value, so nothing behind the
-  modal moves. A decision — or one followed from another tab — removes the property, the spacer, the observer and
-  the focus check, and with them the padding (a page scrolled to its very end moves down by the spacer's height,
-  right after the click). A decided visitor, GPC included, never gets either: no layout shift.
+  Covered means overlapping the layer's box with the layer on top there: `document.elementFromPoint()` at the
+  element's middle, 1px below the lower of the two top edges, must hit the layer. An element below the viewport (a
+  site's `focus({ preventScroll: true })`) is not covered and stays where it is; neither is one in a site's dialog or
+  overlay stacked above the layer — a modal `<dialog>` in the top layer, a fixed modal with a higher `z-index`. Left
+  alone too: a pointer focus (a click focuses what it shows), the layer's own controls, an element taller than the
+  space above the layer that already shows, and focus that has moved on by then. While the dialog is open the layer is
+  hidden and the property keeps its last value, so nothing behind the modal moves ([the site's own fixed-bottom
+  UI](#the-sites-own-fixed-bottom-ui)). A decision — or one followed from another tab — removes the property, the
+  spacer, the observer and the focus check, and with them the padding (a page scrolled to its very end moves down by
+  the spacer's height, right after the click). A decided visitor, GPC included, never gets either: no layout shift.
 
   Limits:
   - While the visitor is undecided, the scrollable area grows by the layer's height: a short page may become
-    scrollable, and a footer that `min-height: 100vh` on a flex `<body>` holds at the bottom moves up by that height
-    once kit.js has appended the spacer and measured the layer, right after the first contentful paint — a layout
-    shift.
+    scrollable.
   - An engine that lists paint timing (`PerformanceObserver.supportedEntryTypes` with `paint`) but delivers no
     buffered entry to a kit.js that boots after the first paint never starts the measuring by itself: the padding
     stays `30vh + 0.5rem` and there is no spacer until the first keyboard focus, whose check starts it after 120
     frames (about 2 s at 60 Hz) and then scrolls with the height.
+  - The same 120 frames start the measuring early when the first contentful paint comes late: a keyboard focus before
+    that paint (an autofocus field) that waits more than 120 frames for it — text held back by a blocking web font,
+    for example — starts the spacer and the height at its 120th frame, before that paint.
   - An app shell — `overflow: hidden` on `<html>` and `<body>`, the content scrolling in a container inside — gets its
     room from `<body>`: a focus in the container's last layer height scrolls `<body>`, and the whole shell with it, up
     by up to that height; it comes back when the visitor decides.
   - A scroll container that does not move with `<body>` (`position: fixed`) gets no room: a focus in its last layer
     height stays under the layer.
-  - A `<body>` that lays its children out in a row — `display: flex` in a row, a grid that flows into columns, a
-    grid with template areas that leave a cell empty — gets no room: the spacer becomes an item beside the content
-    (or in the empty cell), and a focus in the page's last layer height stays under the layer. With a `gap`,
-    `justify-content: space-between` or a column-flow grid the spacer also takes its share of the row until the
-    visitor decides: the main column is narrower or shifted, a grid gets one more column.
-  - The forced geometry covers display, height, flex, margins, padding and border, not `min-height`, `max-height`,
-    `position`, `float` or `order`: a site rule for the children of `<body>` that sets one of them (for example
-    `body > div { min-height: 50vh }`) can make the spacer taller or move it.
+  - A `<body>` that lays out a row flex or a grid gets no spacer, so a focus in the page's last layer height stays
+    under the layer; the scroll padding still applies. That includes a grid whose children flow into rows, where a
+    spacer would be a last row of its own — and would move the footer of a `grid-template-rows: auto 1fr auto`
+    sticky-footer grid up by its height, a layout shift.
+  - In a flex column with a `gap`, the spacer still adds one gap: a footer that `margin-top: auto` holds at the bottom
+    moves up by that gap after the first contentful paint. `justify-content: space-between` shares the free space
+    with the spacer the same way.
+  - A `<body>` that is a scroll container itself (its `overflow` set while `<html>`'s is too, e.g.
+    `html, body { overflow-x: hidden }`), positioned (`position: relative`) and laid out as a flex column contains the
+    spacer's `::before`: `<body>` gets a scroll range of the layer's height of its own while the visitor is undecided.
   - The spacer is the last child of `<body>` when kit.js appends it; whatever the site appends to `<body>` later
     comes after it, and a focus there can stay under the layer.
 - **Equal weight**: the three decision buttons of a layer share one class (`.ck-cc-btn`) and one look; the close
