@@ -482,8 +482,10 @@
   });
   if (!api._s.a) clean("analytics");
   if (!api._s.m) clean("marketing");
+  // the spacer of a kit this one replaced (none on a fresh page): decided, or without layer 1, the page gets none;
+  // undecided, sizing puts this kit's own in its place
+  unspace();
   if (api._s.d) {
-    unspace(); // a page this kit took over decided: the spacer of the kit before it goes too
     activate();
     emit();
   } else if (banner) {

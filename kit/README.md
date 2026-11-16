@@ -411,9 +411,11 @@ element by the layer's height, which kit.js keeps in `--ck-layer-h` on `<html>`:
 }
 ```
 
-- `--ck-layer-h` is set while the first layer is shown, from the first contentful paint on (before that, the `0px`
-  fallback applies), follows every change of the layer's height and is removed at a decision: the element drops back
-  to the bottom. A decided visitor, GPC included, never gets it.
+- `--ck-layer-h` is set while the first layer is shown, once sizing has started — at the first contentful paint; at
+  boot where paint timing is missing; at the 120th frame of a keyboard focus's check when no paint entry came first
+  ([accessibility](#accessibility), Limits) — and before that the `0px` fallback applies. A `ResizeObserver` keeps it
+  current; without one it is measured when sizing starts and again at every focus check. A decision removes it: the
+  element drops back to the bottom. A decided visitor, GPC included, never gets it.
 - While the settings dialog is open, the first layer is hidden (`ck-settings`), but `--ck-layer-h` keeps its value.
   The lifted element stays where it is — behind the modal, like the rest of the page — and is already clear of the
   first layer when the dialog closes without a decision and the first layer comes back. Dropping it meanwhile would
@@ -453,13 +455,14 @@ element by the layer's height, which kit.js keeps in `--ck-layer-h` on `<html>`:
     `<div id="ck-sp" aria-hidden="true">` that kit.js appends as the last child of `<body>` when it starts measuring
     (the first contentful paint). One per page: kit.js removes every `#ck-sp` it finds first, so a kit that replaces
     another (a second init, or markup re-inserted from a snapshot of the live page) owns exactly one, and a decision —
-    or a replacing kit that boots decided — leaves none. Its geometry is forced on the id with `!important` —
-    `display: block`, the height, `min-height: 0`, `max-height: none`, no margin, padding or border,
-    `position: static`, the last place in a flex `order`, `visibility: hidden`, `pointer-events: none` — so a site's
-    rule for the children of `<body>` (`body > div { … }`) neither hides, sizes nor moves it; `float` is left alone, as
-    a floated spacer still ends the page. In a flex column it takes no room in the line (`flex: 0 0 0`): a footer that
-    `margin-top: auto` holds at the bottom of a `min-height: 100vh` `<body>` stays where it is — no layout shift — and
-    the spacer's `::before`, absolutely positioned where the spacer is, 1px wide and as high, keeps the room after it.
+    or a replacing kit that boots decided, or on a page without layer 1's markup — leaves none. Its geometry is forced
+    on the id with `!important` — `display: block`, the height, `min-height: 0`, `max-height: none`, no margin,
+    padding or border, no offset (`position: relative`, `inset: auto`), `overflow: visible`, the last place in a flex
+    `order`, `visibility: hidden`, `pointer-events: none` — so a site's rule for the children of `<body>`
+    (`body > div { … }`) neither hides, sizes nor moves it; `float` is left alone, as a floated spacer still ends the
+    page. In a flex column it takes no room in the line (`flex: 0 0 0`): a footer that `margin-top: auto` holds at the
+    bottom of a `min-height: 100vh` `<body>` stays where it is — no layout shift — and the spacer's `::before`,
+    absolutely positioned in it (the spacer is its containing block), 1px wide and as high, keeps the room after it.
     In a `<body>` that stacks its children — a block or a column flex, the common cases — it adds room whatever the
     site does with its root boxes: `html, body { height: 100% }` (also as a flex column), a flex `<html>`, a site's
     own `html::after` (left alone). A `<body>` that lays out a row flex (a reversed column flex too) or a grid gets no
@@ -501,12 +504,18 @@ element by the layer's height, which kit.js keeps in `--ck-layer-h` on `<html>`:
     under the layer; the scroll padding still applies. That includes a grid whose children flow into rows, where a
     spacer would be a last row of its own — and would move the footer of a `grid-template-rows: auto 1fr auto`
     sticky-footer grid up by its height, a layout shift.
+  - kit.js reads the layout of `<body>` once, when sizing starts: a `<body>` that switches between a grid or a row
+    flex and a block or a column flex at a breakpoint (a rotation, a resize) keeps that first answer, spacer or none.
   - In a flex column with a `gap`, the spacer still adds one gap: a footer that `margin-top: auto` holds at the bottom
     moves up by that gap after the first contentful paint. `justify-content: space-between` shares the free space
     with the spacer the same way.
-  - A `<body>` that is a scroll container itself (its `overflow` set while `<html>`'s is too, e.g.
-    `html, body { overflow-x: hidden }`), positioned (`position: relative`) and laid out as a flex column contains the
-    spacer's `::before`: `<body>` gets a scroll range of the layer's height of its own while the visitor is undecided.
+  - In a flex column the room is the spacer's overflow (its `::before`), so it lands in the scroll range of whatever
+    scrolls the content of `<body>`. A `<body>` that is a scroll container itself and grows with its content — its
+    `overflow` set while `<html>`'s is too, e.g. `html, body { overflow-x: hidden }` — gets the room in its own
+    range, not the page's: while the visitor is undecided it scrolls by up to the layer's height itself, a second
+    scroll range. A focus at the end still clears the layer (the scroll padding is on `<body>` too), as in a
+    `<body>` that is the page's scroller (`html { overflow: hidden }`, `body { height: 100%; overflow-y: auto }`),
+    which gets the room in its range and the page none — measured in Chromium, Firefox and WebKit.
   - The spacer is the last child of `<body>` when kit.js appends it; whatever the site appends to `<body>` later
     comes after it, and a focus there can stay under the layer.
 - **Equal weight**: the three decision buttons of a layer share one class (`.ck-cc-btn`) and one look; the close
