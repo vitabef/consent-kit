@@ -1564,7 +1564,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 			[
 				"screen",
 				"html:not(.ck-decided):not(.ck-off) #ck-sp",
-				"display:block!important;flex:0 0 0!important;height:calc(var(--ck-layer-h) + .5rem)!important;min-height:0!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;position:static!important;order:2147483647!important;visibility:hidden!important;pointer-events:none!important",
+				"display:block!important;flex:0 0 0!important;height:calc(var(--ck-layer-h) + .5rem)!important;min-height:0!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;position:relative!important;inset:auto!important;overflow:visible!important;order:2147483647!important;visibility:hidden!important;pointer-events:none!important",
 			],
 			["screen", "html:not(.ck-decided):not(.ck-off) #ck-sp:before", 'content:"";position:absolute;width:1px;height:calc(var(--ck-layer-h) + .5rem)'],
 		]);
@@ -1581,19 +1581,22 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 	/** The shipped kit.css in the page, followed by a host's own rules — happy-dom cascades both. */
 	const withCss = (hostCss: string) => document.head.insertAdjacentHTML("beforeend", `<style>${assets["kit.css"]}</style><style>${hostCss}</style>`);
 
-	it("a host rule for the children of <body> (body > div { … }) neither sizes nor moves the spacer: min-height 0, max-height none, position static, the last place in a flex order, flex 0 0 0 — set by the host, each of them cost the room or moved a pushed-down footer in Chromium; float stays the host's (a floated spacer still ends the page)", () => {
+	it("a host rule for the children of <body> (body > div { … }) neither sizes nor moves the spacer: min-height 0, max-height none, no offset (position relative, inset auto), overflow visible, the last place in a flex order, flex 0 0 0 — set by the host, each of them cost the room or moved a pushed-down footer in a browser; float stays the host's (a floated spacer still ends the page)", () => {
 		page();
-		withCss("body > div { min-height: 60vh; max-height: 20px; position: absolute; order: -1; flex: 1 1 auto; }");
+		withCss("body > div { min-height: 60vh; max-height: 20px; position: absolute; top: 50px; overflow: hidden; order: -1; flex: 1 1 auto; }");
 		at(banner(), LAYER);
 		runHead();
 		runKit();
 		paint();
 		observers[0]?.report();
 		const s = getComputedStyle(spacer() as HTMLElement);
-		expect([s.minHeight, s.maxHeight, s.position, s.order, s.flex]).toEqual(["0", "none", "static", "2147483647", "0 0 0px"]);
+		// inset, not top: happy-dom keeps the shorthand whole (a browser resets the host's top with it: measured)
+		expect([s.minHeight, s.maxHeight, s.position, s.inset, s.overflow, s.order, s.flex]).toEqual(["0", "none", "relative", "auto", "visible", "2147483647", "0 0 0px"]);
 	});
 
-	it("in a flex column the spacer takes no room in the line (flex-basis 0, no automatic minimum): a footer that margin-top: auto pushes to the bottom of a min-height <body> stays where it is — no layout shift — and the spacer's out-of-flow ::before, 1px wide and as high as the spacer, keeps the room after it", () => {
+	// happy-dom lays out nothing: that a footer margin-top: auto pushes down then stays where it is (no layout shift)
+	// and that the room lands in the scroll range of whatever scrolls <body>'s content rests on browser measurements
+	it("in a flex column the spacer takes no room in the line — flex 0 0 0, no automatic minimum — and is the containing block of its ::before: absolutely positioned, 1px wide, as high as the spacer", () => {
 		page();
 		document.body.setAttribute("style", "display: flex; flex-direction: column; min-height: 100vh");
 		withCss("footer { margin-top: auto; }");
@@ -1604,7 +1607,7 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		observers[0]?.report();
 		expect(document.body.lastElementChild).toBe(spacer());
 		const s = getComputedStyle(spacer() as HTMLElement);
-		expect([s.flex, s.minHeight]).toEqual(["0 0 0px", "0"]);
+		expect([s.flex, s.minHeight, s.position]).toEqual(["0 0 0px", "0", "relative"]);
 		expect(cssRules()).toContainEqual(["screen", "html:not(.ck-decided):not(.ck-off) #ck-sp:before", 'content:"";position:absolute;width:1px;height:calc(var(--ck-layer-h) + .5rem)']);
 	});
 
@@ -2001,6 +2004,16 @@ describe("layer 1 never hides the focus (WCAG 2.4.11 Focus Not Obscured)", () =>
 		runHead();
 		runKit();
 		expect(decided()).toBe(true);
+		expect(document.querySelectorAll("#ck-sp")).toHaveLength(0);
+	});
+
+	it("one spacer per page: a kit that replaces another and boots undecided on a page without layer 1's markup leaves none — the replaced kit's spacer goes", () => {
+		measured();
+		expect(spacer()).not.toBeNull();
+		banner().remove();
+		runHead();
+		runKit();
+		expect(decided()).toBe(false);
 		expect(document.querySelectorAll("#ck-sp")).toHaveLength(0);
 	});
 

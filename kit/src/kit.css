@@ -103,10 +103,11 @@
    <body> (#ck-sp, an empty block), so that the last elements — the footer's links — can scroll above layer 1 too,
    whatever the host does with <html> and <body> (height: 100%, a flex column). Its geometry is forced (an id,
    !important), so that no host rule for body's children (body > div { … }) shrinks, grows or moves it: its sizes,
-   position: static, the last place in a flex order. In a flex column it takes no room in the line (flex-basis 0): a
-   footer pushed to the bottom of a min-height body stays where it is (no layout shift); its out-of-flow ::before
-   keeps the room after it. Without a measured height it has none; in print, decided or with kit.js off it is not
-   shown. */
+   no offset (position: relative with inset: auto), overflow: visible, the last place in a flex order. In a flex
+   column it takes no room in the line (flex-basis 0): a footer pushed to the bottom of a min-height body stays where
+   it is (no layout shift); its ::before, absolutely positioned in it and overflowing it, keeps the room after it —
+   in the scroll range of whatever scrolls the content of <body>. Without a measured height it has none; in print,
+   decided or with kit.js off it is not shown. */
 html:not(.ck-decided):not(.ck-off),
 html:not(.ck-decided):not(.ck-off) > body {
   scroll-padding-bottom: calc(var(--ck-layer-h, 30vh) + 0.5rem);
@@ -126,7 +127,9 @@ html:not(.ck-decided):not(.ck-off) > body {
     margin: 0 !important;
     padding: 0 !important;
     border: 0 !important;
-    position: static !important;
+    position: relative !important;
+    inset: auto !important;
+    overflow: visible !important;
     order: 2147483647 !important;
     visibility: hidden !important;
     pointer-events: none !important;
