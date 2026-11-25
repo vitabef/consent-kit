@@ -16,16 +16,19 @@ defined('ABSPATH') || exit;
  * and their save, the server cleanup's header fields, and the fragments filled.
  * The fragments are the HTML adapter's own, generated into fragments/ with placeholders as values
  * (adapters/wordpress/generate.mjs): every URL is filled with esc_url(), the site id with esc_attr(), the config
- * block's JSON with every "<" escaped, as configBlock() in kit/build.mjs writes it.
+ * block's JSON with every "<" escaped, as configBlock() in kit/build.mjs writes it, and every text as
+ * renderBanner() there fills it — HTML-escaped, the first-layer text in blocks.
  *
  * The settings are the site config's keys (adapters/html/README.md, The site config), with its one language as
- * `language`, `privacyUrl` and `imprintUrl`, and `serverCleanup`.
+ * `language`, `privacyUrl`, `imprintUrl` and `texts`, and `serverCleanup`.
  */
 final class Site
 {
     /** The generated fragments (adapters/wordpress/generate.mjs). */
     private const FRAGMENTS = __DIR__ . '/../fragments/';
-    private const KEYS = ['revision', 'cookie', 'domain', 'categories', 'cleanup', 'legacy', 'endpoint', 'site', 'language', 'privacyUrl', 'imprintUrl', 'serverCleanup'];
+    /** The kit's sample strings, kit/src/i18n/ byte for byte (adapters/wordpress/generate.mjs). */
+    private const I18N = __DIR__ . '/../i18n/';
+    private const KEYS = ['revision', 'cookie', 'domain', 'categories', 'cleanup', 'legacy', 'endpoint', 'site', 'language', 'privacyUrl', 'imprintUrl', 'serverCleanup', 'texts'];
     private const CATEGORIES = ['analytics', 'marketing'];
     // the HTML adapter's patterns; D: "$" only at the very end, as in JavaScript; u: UTF-8 only
     private const NAME = '/^[A-Za-z0-9_.-]+$/D';
@@ -40,10 +43,11 @@ final class Site
 
     /**
      * The checked settings: the config block's config, the first layer's endpoint and site id, the banner language,
-     * the two links and the server cleanup's switch. Every invalid value throws: the head snippet would treat a bad
-     * revision or cookie as no config and do nothing at all, silently. A null value counts as left out.
+     * the two links, the server cleanup's switch and the texts — the site's own, the kit's sample for every one it
+     * leaves out. Every invalid value throws: the head snippet would treat a bad revision or cookie as no config and
+     * do nothing at all, silently. A null value counts as left out.
      *
-     * @return array{config: array<string, mixed>, endpoint: string, site: string, language: string, privacyUrl: string, imprintUrl: string, serverCleanup: bool}
+     * @return array{config: array<string, mixed>, endpoint: string, site: string, language: string, privacyUrl: string, imprintUrl: string, serverCleanup: bool, texts: array<string, string>}
      * @throws \InvalidArgumentException with the message, which starts with "Consent Kit: "
      */
     public static function values(mixed $settings): array
@@ -126,6 +130,22 @@ final class Site
                 self::fail("$key must be an https:// URL, a path that starts with one \"/\" or a #fragment, not " . self::show($settings[$key] ?? null));
             }
         }
+        $samples = self::strings($language);
+        $texts = $settings['texts'] ?? [];
+        if (!self::isObject($texts)) {
+            self::fail('texts must be an object of the kit\'s string keys');
+        }
+        self::only($texts, array_keys($samples), 'texts.');
+        foreach ($texts as $key => $text) {
+            // a check of its own: PCRE's u validates the subject first, PHP's one UTF-8 check without mbstring
+            if (is_string($text) && preg_match('//u', $text) !== 1) {
+                self::fail("texts.$key must be UTF-8 text, not " . self::show($text));
+            }
+            // empty is whitespace only to JavaScript's trim(), as in the HTML adapter
+            if (!is_string($text) || preg_match('/[^' . self::SPACE . ']/u', $text) !== 1) {
+                self::fail("texts.$key must be a non-empty string, not " . self::show($text));
+            }
+        }
         $serverCleanup = $settings['serverCleanup'] ?? false;
         if (!is_bool($serverCleanup)) {
             self::fail('serverCleanup must be true or false, not ' . self::show($serverCleanup));
@@ -136,13 +156,13 @@ final class Site
             + ['categories' => $mapped]
             + ($cleanup === null ? [] : ['cleanup' => $cleanup])
             + ($legacy === null ? [] : ['legacy' => $legacy]);
-        return ['config' => $config, 'endpoint' => $endpoint, 'site' => $site, 'language' => $language, 'privacyUrl' => $settings['privacyUrl'], 'imprintUrl' => $settings['imprintUrl'], 'serverCleanup' => $serverCleanup];
+        return ['config' => $config, 'endpoint' => $endpoint, 'site' => $site, 'language' => $language, 'privacyUrl' => $settings['privacyUrl'], 'imprintUrl' => $settings['imprintUrl'], 'serverCleanup' => $serverCleanup, 'texts' => $texts + $samples];
     }
 
     /**
      * The settings form's fields as settings: the revision's digits as a number, the text fields trimmed, a list
      * one entry per line (blank lines dropped), the checkbox as true or false; an optional field left empty is
-     * left out. Not checked: values() does that.
+     * left out — a text too, which keeps the kit's sample. Not checked: values() does that.
      *
      * @param array<array-key, mixed> $form the posted fields below consent_kit[…]
      * @return array<string, mixed>
@@ -161,6 +181,7 @@ final class Site
             }
         }
         $optional = ['domain' => $text($form['domain'] ?? ''), 'categories' => $categories, 'cleanup' => $cleanup, 'legacy' => $lines($form['legacy'] ?? '')];
+        $texts = is_array($form['texts'] ?? null) ? array_filter(array_map($text, $form['texts']), 'strlen') : [];
         return ['revision' => preg_match('/^[0-9]{1,7}$/D', $revision) ? (int) $revision : $revision, 'cookie' => $text($form['cookie'] ?? '')]
             + array_filter($optional, static fn (string|array $value): bool => $value !== '' && $value !== [])
             + ['endpoint' => $text($form['endpoint'] ?? '')]
@@ -170,7 +191,8 @@ final class Site
                 'privacyUrl' => $text($form['privacyUrl'] ?? ''),
                 'imprintUrl' => $text($form['imprintUrl'] ?? ''),
                 'serverCleanup' => ($form['serverCleanup'] ?? '') === '1',
-            ];
+            ]
+            + array_filter(['texts' => $texts]);
     }
 
     /**
@@ -241,10 +263,31 @@ final class Site
         return "$scheme://" . strtolower($parts['host']) . ':' . ($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
     }
 
-    /** The kit's languages: the folders of fragments/ with a first layer. @return list<string> */
+    /** The kit's languages: the files of i18n/. @return list<string> */
     public static function languages(): array
     {
-        return array_map(static fn (string $file): string => basename(dirname($file)), glob(self::FRAGMENTS . '*/banner.html') ?: []);
+        return array_map(static fn (string $file): string => basename($file, '.json'), glob(self::I18N . '*.json') ?: []);
+    }
+
+    /**
+     * The kit's sample strings in one of its languages, without the note: the texts a site leaves out. A damaged
+     * i18n/<lang>.json throws as an invalid setting does, so the plugin emits nothing instead of failing every page.
+     *
+     * @return array<string, string>
+     * @throws \InvalidArgumentException with the message
+     */
+    public static function strings(string $language): array
+    {
+        try {
+            $strings = json_decode((string) file_get_contents(self::I18N . "$language.json"), true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            $strings = null;
+        }
+        if (!self::isObject($strings) || $strings === [] || array_filter($strings, static fn (mixed $text): bool => !is_string($text)) !== []) {
+            self::fail("the plugin's i18n/$language.json is damaged: install the plugin folder again");
+        }
+        unset($strings['_note']);
+        return $strings;
     }
 
     /** The <head> part: the Consent Mode defaults, the config block, the inline head snippet, the inline styles. */
@@ -262,18 +305,24 @@ final class Site
     /** The first layer and the settings dialog, the first thing in <body>. */
     public static function banner(array $values): string
     {
-        return self::fragment("{$values['language']}/banner.html", [
+        $fill = [
             '{{privacyUrl}}' => esc_url($values['privacyUrl']),
             '{{imprintUrl}}' => esc_url($values['imprintUrl']),
             '{{endpoint}}' => esc_url($values['endpoint']),
             '{{site}}' => esc_attr($values['site']),
-        ]);
+        ];
+        foreach ($values['texts'] as $key => $text) {
+            // either form of a string placeholder, as fill() in kit/build.mjs renders it
+            $fill['{{' . $key . '}}'] = self::escape($text);
+            $fill['{{' . $key . '|blocks}}'] = self::blocks($text);
+        }
+        return self::fragment('banner.html', $fill);
     }
 
     /** The reopen link for the footer: to the privacy policy, named like the settings dialog. */
     public static function footerLink(array $values): string
     {
-        return self::fragment("{$values['language']}/footer-link.html", ['{{privacyUrl}}' => esc_url($values['privacyUrl'])]);
+        return self::fragment('footer-link.html', ['{{privacyUrl}}' => esc_url($values['privacyUrl']), '{{dialogTitle}}' => self::escape($values['texts']['dialogTitle'])]);
     }
 
     /** kit.js, deferred, with Subresource Integrity, from $kitPath — the URL of the plugin's fragments/consent-kit/. */
@@ -286,6 +335,19 @@ final class Site
     private static function fragment(string $file, array $values): string
     {
         return strtr((string) file_get_contents(self::FRAGMENTS . $file), $values);
+    }
+
+    /** escapeHtml() of kit/build.mjs — not esc_html(), which writes ' as &#039; and keeps an entity as written: the HTML adapter's bytes. */
+    private static function escape(string $text): string
+    {
+        return strtr($text, ['&' => '&amp;', '<' => '&lt;', '>' => '&gt;', '"' => '&quot;']);
+    }
+
+    /** blocks() of kit/build.mjs: one span per line (split at "\n", spaces, tabs and carriage returns at its ends dropped, empty lines left out), each escaped, joined by one space. */
+    private static function blocks(string $text): string
+    {
+        $lines = array_filter(array_map(static fn (string $line): string => trim($line, " \t\r"), explode("\n", $text)), 'strlen');
+        return implode(' ', array_map(static fn (string $line): string => '<span class="ck-cc-s">' . self::escape($line) . '</span>', $lines));
     }
 
     private static function fail(string $message): never

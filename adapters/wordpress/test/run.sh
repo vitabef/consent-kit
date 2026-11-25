@@ -33,8 +33,13 @@ fetch() { # fetch <name> <curl arguments…>: the answer's header fields into <n
 }
 has() { grep -qF -- "$2" "$OUT/$1"; }
 lacks() { ! grep -qF -- "$2" "$OUT/$1"; }
-# the bytes of a reference file in one piece, in a saved answer
-contains() { php -r 'exit(str_contains(file_get_contents($argv[1]), file_get_contents($argv[2])) ? 0 : 1);' "$SAVED/$1" "$2"; }
+# no PHP error, warning, notice or deprecation in a saved answer (WP_DEBUG prints them), and no critical-error page
+quiet() { ! grep -qE '(Fatal error|Warning|Notice|Deprecated)</b>:|There has been a critical error' "$OUT/$1"; }
+# the settings form's field labels in a saved answer, one per line
+labels() { grep -o '<label for="consent-kit-[^"]*">[^<]*</label>' "$OUT/$1" | sed 's/<[^>]*>//g'; }
+# the bytes of a reference file (a path below $REPO, read at /repo inside the container) in one piece, in a saved
+# answer; a file that cannot be read, or is empty, fails
+contains() { php -r '$a = file_get_contents($argv[1]); $b = file_get_contents($argv[2]); exit(is_string($a) && is_string($b) && $b !== "" && str_contains($a, $b) ? 0 : 1);' "$SAVED/$1" "/repo${2#"$REPO"}"; }
 # the line after (before) the first line with the text, its indentation dropped
 after() { awk -v s="$2" 'found { print; exit } index($0, s) { found = 1 }' "$OUT/$1" | sed 's/^[[:space:]]*//'; }
 before() { awk -v s="$2" 'index($0, s) { print prev; exit } { prev = $0 }' "$OUT/$1" | sed 's/^[[:space:]]*//'; }
@@ -70,14 +75,14 @@ echo "--- the HTML adapter's example settings (test/settings.json)"
 cli option update consent_kit --format=json <"$DIR/settings.json"
 fetch page "$BASE/"
 cat "$HTML/consent-mode.html" "$HTML/head.html" >"$OUT/head-part.expected"
-check "<head>: the HTML adapter's consent-mode.html and head.html, byte for byte, in one piece" contains page.html "$SAVED/head-part.expected"
+check "<head>: the HTML adapter's consent-mode.html and head.html, byte for byte, in one piece" contains page.html "$OUT/head-part.expected"
 check "<head>: first, right after <meta charset>" test "$(after page.html '<meta charset=')" = '<script data-cfasync="false">'
 check "<body>: the HTML adapter's en/banner.html, byte for byte" contains page.html "$HTML/en/banner.html"
 check "<body>: the first layer is its first child" test "$(after page.html '<body ')" = "$(head -n 1 "$HTML/en/banner.html")"
 script=$(sed "s|src=\"/consent-kit/|src=\"$BASE/wp-content/plugins/consent-kit/fragments/consent-kit/|" "$HTML/script.html")
 check "kit.js: the HTML adapter's script.html, served from the plugin folder" has page.html "$script"
 check "kit.js: the last thing before </body>" test "$(before page.html '</body>')" = "$script"
-check "no PHP error, warning, notice or deprecation (WP_DEBUG)" sh -c "! grep -qE '(Fatal error|Warning|Notice|Deprecated)</b>:' '$OUT/page.html'"
+check "no PHP error, warning, notice or deprecation (WP_DEBUG)" quiet page.html
 
 src=$(printf '%s\n' "$script" | sed 's/.* src="\([^"]*\)".*/\1/')
 integrity=$(printf '%s\n' "$script" | sed 's/.* integrity="\([^"]*\)".*/\1/')
@@ -141,6 +146,20 @@ check "a localStorage key that closes the element: not in the page as written" l
 check "… and the config block holds it, escaped" php -r 'preg_match("~id=.ck-config.>(.*?)</script>~", file_get_contents($argv[1]), $m); exit(json_decode($m[1], true)["cleanup"]["marketing"]["localStorage"] === [$argv[2]] ? 0 : 1);' "$SAVED/hostile.html" '</script><img src=x onerror=alert(1)>'
 check "… and the page keeps the first layer" has hostile.html 'data-ck-banner'
 
+echo "--- the site's own texts (test/texts.json), saved past the settings page"
+cli option update consent_kit --format=json <"$DIR/settings.json"
+cli option patch insert consent_kit texts "$(cat "$DIR/texts.json")" --format=json
+fetch texts "$BASE/"
+check "the first layer and the dialog in them: the HTML adapter's bytes (test/texts/banner.html)" contains texts.html "$DIR/texts/banner.html"
+check "… no text as written" lacks texts.html '</script><script>alert(1)</script>'
+check "… no PHP error, warning, notice or deprecation" quiet texts.html
+fetch texts-links "$BASE/?page_id=$links"
+check "the reopen link named by the site's dialog title (test/texts/footer-link.html)" has texts-links.html "$(cat "$DIR/texts/footer-link.html")"
+cli option patch update consent_kit texts acceptAll ' '
+fetch bad-text "$BASE/"
+check "a text of spaces only: nothing emitted" sh -c "! grep -qE 'ck-config|data-ck-banner|consent-kit/kit\.' '$OUT/bad-text.html'"
+check "… and no PHP error, warning, notice or deprecation (a fatal error emits nothing too)" quiet bad-text.html
+
 echo "--- the settings page (Settings → Consent Kit)"
 cli option delete consent_kit
 jar="$OUT/admin.cookies"
@@ -149,10 +168,15 @@ curl -sS -b "$jar" -c "$jar" -o /dev/null -d log=admin -d "pwd=$PASS" -d testcoo
 fetch settings -b "$jar" "$BASE/wp-admin/options-general.php?page=consent-kit"
 check "an admin: the page, its form to options.php with the settings group and its nonce" sh -c "grep -qF 'action=\"options.php\"' '$OUT/settings.html' && grep -qE 'name=.option_page. value=.consent_kit.' '$OUT/settings.html' && grep -qF 'name=\"_wpnonce\"' '$OUT/settings.html'"
 check "nothing saved yet: the page says the kit is on no page" has settings.html 'Not set up: the kit is on no page'
+check "the Texts section: a field per string, empty, the banner language's sample as its placeholder" has settings.html 'name="consent_kit[texts][acceptAll]" value="" class="large-text" placeholder="Accept all">'
+check "… the first-layer text in a text area" has settings.html 'name="consent_kit[texts][text]" rows="5" class="large-text" placeholder="We would like to use cookies'
+check "the form: 30 fields, 16 settings and 14 texts" test "$(labels settings.html | wc -l | tr -d ' ')" = 30
+check "… no label twice" test -z "$(labels settings.html | sort | uniq -d)"
 nonce=$(sed -n 's/.*name="_wpnonce" value="\([0-9a-f]*\)".*/\1/p' "$OUT/settings.html" | head -n 1)
-post() { # post <name> <nonce> <privacy URL>: the form with test/settings.json's values, as a browser sends it
-  fetch "$1" -L -b "$jar" -c "$jar" "$BASE/wp-admin/options.php" \
-    --data-urlencode option_page=consent_kit --data-urlencode action=update --data-urlencode "_wpnonce=$2" \
+post() { # post <name> <nonce> <privacy URL> [curl arguments…]: the form with test/settings.json's values, as a browser sends it
+  post_name="$1"; post_nonce="$2"; post_privacy="$3"; shift 3
+  fetch "$post_name" -L -b "$jar" -c "$jar" "$BASE/wp-admin/options.php" \
+    --data-urlencode option_page=consent_kit --data-urlencode action=update --data-urlencode "_wpnonce=$post_nonce" \
     --data-urlencode "_wp_http_referer=/wp-admin/options-general.php?page=consent-kit" \
     --data-urlencode "consent_kit[revision]=1" --data-urlencode "consent_kit[cookie]=ck_consent" \
     --data-urlencode "consent_kit[domain]=example.com" \
@@ -164,8 +188,8 @@ post() { # post <name> <nonce> <privacy URL>: the form with test/settings.json's
     --data-urlencode "consent_kit[legacy]=previous-tool-consent" \
     --data-urlencode "consent_kit[endpoint]=https://consent.example.com/v1/record" \
     --data-urlencode "consent_kit[site]=example-site" --data-urlencode "consent_kit[language]=en" \
-    --data-urlencode "consent_kit[privacyUrl]=$3" --data-urlencode "consent_kit[imprintUrl]=/en/imprint/" \
-    --data-urlencode "consent_kit[serverCleanup]=1"
+    --data-urlencode "consent_kit[privacyUrl]=$post_privacy" --data-urlencode "consent_kit[imprintUrl]=/en/imprint/" \
+    --data-urlencode "consent_kit[serverCleanup]=1" "$@"
 }
 stored() { cli eval 'exit(get_option("consent_kit") === json_decode(file_get_contents("/repo/adapters/wordpress/test/settings.json"), true) ? 0 : 1);'; }
 post hostile-form "$nonce" '"><img src=x onerror=alert(1)>'
@@ -185,6 +209,27 @@ check "… and the saved settings stay as they were" stored
 post esc-form "$nonce" '#a:b'
 check "a link esc_url() empties (#a:b): refused with the reason" has esc-form.html 'Consent Kit: privacyUrl &quot;#a:b&quot; is not kept by WordPress&#039;s esc_url(), which writes &quot;&quot;'
 check "… and the saved settings stay as they were" stored
+post bad-text-form "$nonce" /en/privacy/ --data-urlencode "consent_kit[texts][close]=$(printf '\302\240')"
+check "a text of no-break spaces only (kept by PHP's trim()): refused with its message" has bad-text-form.html 'Consent Kit: texts.close must be a non-empty string'
+check "… and the saved settings stay as they were" stored
+post text-form "$nonce" /en/privacy/ --data-urlencode 'consent_kit[texts][acceptAll]= Allow "all" & go ' --data-urlencode 'consent_kit[texts][close]='
+check "a text of its own: saved, trimmed, after the other settings; an empty one left out" cli eval 'exit(get_option("consent_kit") === json_decode(file_get_contents("/repo/adapters/wordpress/test/settings.json"), true) + ["texts" => ["acceptAll" => "Allow \"all\" & go"]] ? 0 : 1);'
+fetch text-page "$BASE/"
+check "… in both layers, escaped as the kit escapes it" test "$(grep -cF 'data-ck-action="accept">Allow &quot;all&quot; &amp; go</button>' "$OUT/text-page.html")" = 2
+check "… and no PHP error, warning, notice or deprecation" quiet text-page.html
+# an entity in a text, as written: esc_attr() keeps one, so the form writes its text fields with htmlspecialchars()
+check "esc_attr() keeps an entity as written" test "$(cli eval 'echo esc_attr("Fish &amp; chips");')" = 'Fish &amp; chips'
+amp_stored() { cli eval 'exit(get_option("consent_kit")["texts"]["close"] === "Fish &amp; chips" ? 0 : 1);'; }
+post amp-form "$nonce" /en/privacy/ --data-urlencode 'consent_kit[texts][close]=Fish &amp; chips'
+check "a text with an entity as written (&amp;): stored as written" amp_stored
+fetch amp-settings -b "$jar" "$BASE/wp-admin/options-general.php?page=consent-kit"
+check "… back in its field encoded once more, so the browser shows it as written" has amp-settings.html 'name="consent_kit[texts][close]" value="Fish &amp;amp; chips"'
+shown=$(sed -n 's/.*name="consent_kit\[texts]\[close]" value="\([^"]*\)".*/\1/p' "$OUT/amp-settings.html" | php -r 'echo html_entity_decode(trim(stream_get_contents(STDIN)), ENT_QUOTES | ENT_HTML5, "UTF-8");')
+post amp-resave "$nonce" /en/privacy/ --data-urlencode "consent_kit[texts][close]=$shown"
+check "… and a save of the form as the browser sends it back keeps it unchanged" amp_stored
+post amp-kept "$nonce" '#' --data-urlencode 'consent_kit[texts][close]=Fish &amp; chips'
+check "… also in the form kept after an invalid value" has amp-kept.html 'name="consent_kit[texts][close]" value="Fish &amp;amp; chips"'
+cli option update consent_kit --format=json <"$DIR/settings.json"
 post bad-nonce 0123456789 /en/privacy/
 check "a wrong nonce: 403, nothing changed" sh -c "test \"\$(head -n 1 '$OUT/bad-nonce.headers' | cut -d ' ' -f 2)\" = 403"
 check "… still test/settings.json" stored

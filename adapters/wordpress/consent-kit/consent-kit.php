@@ -168,38 +168,67 @@ function consent_kit_settings_page(): void
         [['legacy'], 'Previous consent tool', 'lines', 'Its cookies, deleted on every page load. One per line.'],
         [['endpoint'], 'Records endpoint', 'text', 'Where the consent records go (https://consent.example.com/v1/record); empty: no records.'],
         [['site'], 'Site id', 'text', 'The site id in every record, one of the records service\'s SITES; needed with an endpoint.'],
-        [['language'], 'Banner language', 'select', 'The language of the first layer, the dialog and the reopen link (the kit\'s sample texts).'],
+        [['language'], 'Banner language', 'select', 'The language of the first layer, the dialog and the reopen link: the kit\'s sample for every text left empty below.'],
         [['privacyUrl'], 'Privacy policy', 'text', 'An https:// URL, a path that starts with one "/", or a #fragment. The reopen link goes there too.'],
         [['imprintUrl'], 'Imprint', 'text', 'An https:// URL, a path that starts with one "/", or a #fragment.'],
         [['serverCleanup'], 'Server cleanup', 'checkbox', 'Also delete a denied category\'s cookies in the page responses, with Set-Cookie headers (https only).'],
     ];
+    // the Texts section: one field per string of the kit, its sample in the banner language as the placeholder
+    try {
+        $samples = Site::strings(in_array($settings['language'] ?? null, $languages, true) ? $settings['language'] : $languages[0]);
+    } catch (\InvalidArgumentException) {
+        $samples = []; // a damaged i18n/ file: no text fields; a save is refused with the reason
+    }
+    // each string's label and where it shows (kit/README.md, i18n)
+    $about = [
+        'title' => ['First layer: name', 'Its aria-label, the name screen readers announce: the first layer has no visible title.'],
+        'text' => ['First layer: text', 'Its one paragraph. A line break starts a new block of it: split a long text at sentence boundaries.'],
+        'privacy' => ['Link: privacy policy', 'The text of the link to the privacy policy, in both layers.'],
+        'imprint' => ['Link: imprint', 'The text of the link to the imprint, in both layers.'],
+        'acceptAll' => ['Button: accept all', 'The decision button that grants both categories, in both layers.'],
+        'rejectAll' => ['Button: reject all', 'The decision button that denies both categories, in both layers.'],
+        'settings' => ['Button: settings', 'The first layer\'s button that opens the dialog.'],
+        'dialogTitle' => ['Dialog: title', 'The dialog\'s heading, and the text of the reopen link that the first-layer text sends visitors to.'],
+        'close' => ['Dialog: close button', 'Closes the dialog without a decision.'],
+        'analytics' => ['Statistics: name', 'The statistics category\'s name in the dialog.'],
+        'analyticsDetails' => ['Statistics: text', 'The statistics category\'s text in the dialog, under its name.'],
+        'marketing' => ['Marketing: name', 'The marketing category\'s name in the dialog.'],
+        'marketingDetails' => ['Marketing: text', 'The marketing category\'s text in the dialog, under its name.'],
+        'saveChoice' => ['Button: save choice', 'The dialog\'s button that saves the two switches as the choice.'],
+    ];
+    $texts = array_map(static fn (string $key): array => [['texts', $key], $about[$key][0] ?? $key, $key === 'text' ? 'paragraph' : 'line', $about[$key][1] ?? ''], array_keys($samples));
+    $rows = static function (array $fields) use ($settings, $languages, $samples): void {
+        foreach ($fields as [$path, $label, $input, $help]) {
+            $value = $settings;
+            foreach ($path as $key) {
+                $value = is_array($value) ? ($value[$key] ?? '') : '';
+            }
+            $value = is_array($value) ? implode("\n", array_filter($value, 'is_string')) : (is_scalar($value) ? (string) $value : '');
+            $id = esc_attr('consent-kit-' . implode('-', $path));
+            $name = esc_attr('consent_kit[' . implode('][', $path) . ']');
+            echo '<tr><th scope="row"><label for="' . $id . '">' . esc_html($label) . '</label></th><td>';
+            echo match ($input) {
+                'lines' => "<textarea id=\"$id\" name=\"$name\" rows=\"3\" class=\"large-text code\">" . esc_textarea($value) . '</textarea>',
+                'paragraph' => "<textarea id=\"$id\" name=\"$name\" rows=\"5\" class=\"large-text\" placeholder=\"" . esc_attr($samples[$path[1]]) . '">' . esc_textarea($value) . '</textarea>',
+                // htmlspecialchars(), not esc_attr(), which keeps an entity: a text "&amp;" would come back as "&" on the next save
+                'line' => "<input type=\"text\" id=\"$id\" name=\"$name\" value=\"" . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '" class="large-text" placeholder="' . esc_attr($samples[$path[1]]) . '">',
+                'select' => "<select id=\"$id\" name=\"$name\">" . implode('', array_map(static fn (string $lang): string => '<option value="' . esc_attr($lang) . '"' . selected($value, $lang, false) . '>' . esc_html($lang) . '</option>', $languages)) . '</select>',
+                'checkbox' => "<input type=\"checkbox\" id=\"$id\" name=\"$name\" value=\"1\"" . checked($value, '1', false) . '>',
+                default => "<input type=\"$input\" id=\"$id\" name=\"$name\" value=\"" . esc_attr($value) . '" class="regular-text">',
+            };
+            echo '<p class="description"><code>' . esc_html(implode('.', $path)) . '</code> ' . esc_html($help) . '</p></td></tr>';
+        }
+    };
     ?>
     <div class="wrap">
         <h1>Consent Kit</h1>
         <div class="notice <?php echo esc_attr($state[0]); ?> inline"><p><?php echo esc_html($state[1]); ?></p></div>
         <form method="post" action="options.php">
             <?php settings_fields('consent_kit'); ?>
-            <table class="form-table" role="presentation">
-                <?php
-                foreach ($fields as [$path, $label, $input, $help]) {
-                    $value = $settings;
-                    foreach ($path as $key) {
-                        $value = is_array($value) ? ($value[$key] ?? '') : '';
-                    }
-                    $value = is_array($value) ? implode("\n", array_filter($value, 'is_string')) : (is_scalar($value) ? (string) $value : '');
-                    $id = esc_attr('consent-kit-' . implode('-', $path));
-                    $name = esc_attr('consent_kit[' . implode('][', $path) . ']');
-                    echo '<tr><th scope="row"><label for="' . $id . '">' . esc_html($label) . '</label></th><td>';
-                    echo match ($input) {
-                        'lines' => "<textarea id=\"$id\" name=\"$name\" rows=\"3\" class=\"large-text code\">" . esc_textarea($value) . '</textarea>',
-                        'select' => "<select id=\"$id\" name=\"$name\">" . implode('', array_map(static fn (string $lang): string => '<option value="' . esc_attr($lang) . '"' . selected($value, $lang, false) . '>' . esc_html($lang) . '</option>', $languages)) . '</select>',
-                        'checkbox' => "<input type=\"checkbox\" id=\"$id\" name=\"$name\" value=\"1\"" . checked($value, '1', false) . '>',
-                        default => "<input type=\"$input\" id=\"$id\" name=\"$name\" value=\"" . esc_attr($value) . '" class="regular-text">',
-                    };
-                    echo '<p class="description"><code>' . esc_html(implode('.', $path)) . '</code> ' . esc_html($help) . '</p></td></tr>';
-                }
-                ?>
-            </table>
+            <table class="form-table" role="presentation"><?php $rows($fields); ?></table>
+            <h2>Texts</h2>
+            <p>The first layer, the dialog and the reopen link in the banner language. An empty field shows the kit's sample, its placeholder: wording for a site with an analytics and an advertising service, not legal advice. Put the site's own, legally reviewed texts here.</p>
+            <table class="form-table" role="presentation"><?php $rows($texts); ?></table>
             <?php submit_button(); ?>
         </form>
     </div>

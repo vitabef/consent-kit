@@ -73,7 +73,7 @@ One JSON file for the whole site; per-language values under `languages`. The exa
 | Key | Required | Meaning |
 |---|---|---|
 | `privacyUrl`, `imprintUrl` | yes — an `https://` URL, a path that starts with one `/`, or a `#fragment` | the privacy policy and the imprint, linked in both layers; the reopen link goes to `privacyUrl` |
-| `texts` | no | the site's own texts, under the keys of `kit/src/i18n/<lang>.json` (`_note` excepted) — each a non-empty string |
+| `texts` | no | the site's own texts, under the keys of `kit/src/i18n/<lang>.json` (`_note` excepted) — each a string that is more than whitespace ([What to change](#what-to-change)) |
 
 `revision`, `cookie`, `domain`, `categories`, `cleanup` and `legacy` make the config block
 ([The config block](../../kit/README.md#the-config-block)); `categories` is always written whole, as kit.js
@@ -87,10 +87,26 @@ generator stops with a message that starts with `consent-kit:` and the file's na
 ## What to change
 
 - **The texts.** The strings in `kit/src/i18n/*.json` are samples for a site with an analytics and an advertising
-  service, not legal advice: put the site's own legally reviewed texts into `languages.<lang>.texts`
-  ([i18n](../../kit/README.md#i18n)). A line break in `text` starts a new block of the first layer's paragraph
-  ([The first-layer text in blocks](../../kit/README.md#the-first-layer-text-in-blocks)). The reopen link's text is
-  `dialogTitle`, the name the first-layer text sends visitors to at the bottom of the page: keep the two in step.
+  service, not legal advice: put the site's own legally reviewed texts into `languages.<lang>.texts`, under the same
+  keys ([i18n](../../kit/README.md#i18n) says where each one shows). A key left out keeps the sample; every text is
+  HTML-escaped as the samples are.
+
+  ```json
+  "en": {
+    "privacyUrl": "/en/privacy/",
+    "imprintUrl": "/en/imprint/",
+    "texts": {
+      "text": "The site's own first sentence.\nIts second sentence, a block of its own.",
+      "analyticsDetails": "The site's own words for its analytics service."
+    }
+  }
+  ```
+
+  Only `text` has several lines: a line break (`\n` in JSON) starts a new block of the first layer's paragraph
+  ([The first-layer text in blocks](../../kit/README.md#the-first-layer-text-in-blocks)) — split a long text at
+  sentence boundaries. A line break in any other text stays in it as written, and a browser shows it as a space. The
+  reopen link's text is `dialogTitle`, the name the first-layer text sends visitors to at the bottom of the page: keep
+  the two in step.
 - **The Consent Mode defaults.** `consent-mode.html` is the kit demo's. A site that sets its own (in a tag manager,
   for example) leaves it out and keeps its own first in `<head>`, before `head.html`: everything denied, no
   `url_passthrough`.

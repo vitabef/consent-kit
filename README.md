@@ -85,8 +85,8 @@ local development: [adapters/hugo/README.md](adapters/hugo/README.md).
   vectors in [spec/vectors.json](spec/vectors.json), which the head snippet itself is tested against.
 - **A PHP server:** `adapters/php/` is that reader in plain PHP, with the cleanup's `Set-Cookie` deletions:
   [adapters/php/README.md](adapters/php/README.md).
-- **A WordPress site:** `adapters/wordpress/consent-kit/` is a plugin folder — a settings page, the HTML adapter's
-  fragments in every page, the PHP helper's verdict as `consent_kit_verdict()` and its cleanup:
+- **A WordPress site:** `adapters/wordpress/consent-kit/` is a plugin folder — a settings page with the site's own
+  texts, the HTML adapter's fragments in every page, the PHP helper's verdict as `consent_kit_verdict()` and its cleanup:
   [adapters/wordpress/README.md](adapters/wordpress/README.md).
 
 ## Repository layout
@@ -105,7 +105,7 @@ local development: [adapters/hugo/README.md](adapters/hugo/README.md).
 | `adapters/hugo/` | the Hugo adapter: partials, sample strings, an example site, tests ([adapters/hugo/README.md](adapters/hugo/README.md)) |
 | `adapters/html/` | the HTML adapter: the fragment generator, an example config with its output, tests ([adapters/html/README.md](adapters/html/README.md)) |
 | `adapters/php/` | the PHP helper: the stored choice read on a PHP server, the cleanup's deletions, PHPUnit tests ([adapters/php/README.md](adapters/php/README.md)) |
-| `adapters/wordpress/` | the WordPress plugin: the plugin folder `consent-kit/` with its generated templates and helper copy, the generator, PHPUnit tests and a run in a real WordPress ([adapters/wordpress/README.md](adapters/wordpress/README.md)) |
+| `adapters/wordpress/` | the WordPress plugin: the plugin folder `consent-kit/` with its generated templates, sample strings and helper copy, the generator, PHPUnit tests and a run in a real WordPress ([adapters/wordpress/README.md](adapters/wordpress/README.md)) |
 | `spec/` | the stored choice read on a server: the rules and the shared test vectors ([spec/consent-cookie.md](spec/consent-cookie.md)) |
 | `worker/src/index.ts` | the Worker: the two routes, the 404 fallback, the error answer, the cron handler |
 | `worker/src/record.ts`, `contract.ts`, `body.ts` | `POST /v1/record`: handler, record contract + rate-limit keys, bounded body reader |
@@ -149,8 +149,8 @@ The gate runs six steps and stops at the first failure (exit code 0 = push-ready
 
 Single steps: `npm run typecheck` (both type checks), `npm test`, `npm run build`; the PHP helper's `composer test`
 in `adapters/php`. After a change to `kit/src/`, `kit/templates/` or `adapters/php/src/`, run `npm run build` and
-commit `dist/` and the regenerated files in `adapters/hugo/`, `adapters/html/example/fragments/` and
-`adapters/wordpress/consent-kit/` with it.
+commit `dist/` and the regenerated files in `adapters/hugo/`, `adapters/html/example/fragments/`,
+`adapters/wordpress/consent-kit/` and `adapters/wordpress/test/texts/` with it.
 
 **Demo page.** After a build, serve `kit/dist/` as the web root with any static server and open `demo/index.html`
 (German) or `demo/en/index.html` (English). It is a fake host page with the kit emitted the way a site adapter emits it:
@@ -390,7 +390,8 @@ deleted or misconfigured application) is refused as well.
 6. **A reopen link** with `data-ck-open` at the bottom of every page — the first-layer text tells visitors to find
    „Cookie-Einstellungen“ / “Cookie settings” there.
 7. **The wording**: the strings in `kit/src/i18n/*.json` are samples for a site with an analytics and an advertising
-   service — not legal advice. Every site supplies its own legally reviewed texts, rendered into the same keys.
+   service — not legal advice. Every site supplies its own legally reviewed texts, rendered into the same keys: the
+   Hugo module's i18n ids, the HTML adapter's `texts`, the WordPress plugin's Texts section.
 
 Every attribute, the API, the event and the cookie are described in [kit/README.md](kit/README.md).
 

@@ -41,9 +41,11 @@
     { "name": "a bare # as the privacy link", "language": ["de", { "privacyUrl": "#" }], "message": "languages.de.privacyUrl must be an https:// URL" },
     { "name": "a privacy link with a zero-width no-break space", "language": ["de", { "privacyUrl": "/a\ufeffb/" }], "message": "languages.de.privacyUrl must be an https:// URL" },
     { "name": "no imprint link", "language": ["en", { "imprintUrl": null }], "message": "languages.en.imprintUrl must be an https:// URL, a path that starts with one \"/\" or a #fragment, not nothing" },
-    { "name": "an unknown text key", "language": ["en", { "texts": { "cookieLink": "x" } }], "message": "languages.en.texts.cookieLink is not a key", "wordpress": "texts is not a key" },
-    { "name": "the note as a text key", "language": ["en", { "texts": { "_note": "x" } }], "message": "languages.en.texts._note is not a key", "wordpress": "texts is not a key" },
-    { "name": "an empty text", "language": ["en", { "texts": { "acceptAll": " " } }], "message": "languages.en.texts.acceptAll must be a non-empty string, not \" \"", "wordpress": "texts is not a key" },
-    { "name": "a text that is not a string", "language": ["de", { "texts": { "acceptAll": 1 } }], "message": "languages.de.texts.acceptAll must be a non-empty string, not 1", "wordpress": "texts is not a key" }
+    { "name": "texts as a list", "language": ["de", { "texts": ["Alle akzeptieren"] }], "message": "languages.de.texts must be an object of the kit's string keys" },
+    { "name": "an unknown text key", "language": ["en", { "texts": { "cookieLink": "x" } }], "message": "languages.en.texts.cookieLink is not a key (title, text, privacy, imprint, acceptAll, rejectAll, settings, dialogTitle, close, analytics, analyticsDetails, marketing, marketingDetails, saveChoice)" },
+    { "name": "the note as a text key", "language": ["en", { "texts": { "_note": "x" } }], "message": "languages.en.texts._note is not a key" },
+    { "name": "an empty text", "language": ["en", { "texts": { "acceptAll": " " } }], "message": "languages.en.texts.acceptAll must be a non-empty string, not \" \"" },
+    { "name": "a text of no-break spaces only", "language": ["de", { "texts": { "close": "  " } }], "message": "languages.de.texts.close must be a non-empty string" },
+    { "name": "a text that is not a string", "language": ["de", { "texts": { "acceptAll": 1 } }], "message": "languages.de.texts.acceptAll must be a non-empty string, not 1" }
   ]
 }

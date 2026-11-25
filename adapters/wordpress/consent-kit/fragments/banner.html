@@ -1,0 +1,39 @@
+<div class="ck-cc" role="region" aria-label="{{title}}" data-ck-banner data-endpoint="{{endpoint}}" data-site="{{site}}" data-nosnippet>
+  <div class="ck-cc-i">
+    <div>
+      <p class="ck-cc-p">{{text|blocks}}</p>
+      <p class="ck-cc-l"><a href="{{privacyUrl}}">{{privacy}}</a> · <a href="{{imprintUrl}}">{{imprint}}</a></p>
+    </div>
+    <div class="ck-cc-b">
+      <button type="button" class="ck-cc-btn" data-ck-action="accept">{{acceptAll}}</button>
+      <button type="button" class="ck-cc-btn" data-ck-action="reject">{{rejectAll}}</button>
+      <button type="button" class="ck-cc-btn" data-ck-open>{{settings}}</button>
+    </div>
+  </div>
+</div>
+<dialog class="ck-cd" aria-labelledby="ck-cd-t" closedby="any" data-ck-dialog data-nosnippet>
+  <div class="ck-cd-h">
+    <h2 class="ck-cd-t" id="ck-cd-t">{{dialogTitle}}</h2>
+    <button type="button" class="ck-cd-close" data-ck-close>{{close}}</button>
+  </div>
+  <div class="ck-cd-c">
+    <details class="ck-cd-d">
+      <summary class="ck-cd-n" id="ck-cd-na">{{analytics}}</summary>
+      <p class="ck-cd-x" id="ck-cd-xa">{{analyticsDetails}}</p>
+    </details>
+    <input class="ck-cd-s" type="checkbox" role="switch" aria-labelledby="ck-cd-na" aria-describedby="ck-cd-xa" data-ck-category="analytics">
+  </div>
+  <div class="ck-cd-c">
+    <details class="ck-cd-d">
+      <summary class="ck-cd-n" id="ck-cd-nm">{{marketing}}</summary>
+      <p class="ck-cd-x" id="ck-cd-xm">{{marketingDetails}}</p>
+    </details>
+    <input class="ck-cd-s" type="checkbox" role="switch" aria-labelledby="ck-cd-nm" aria-describedby="ck-cd-xm" data-ck-category="marketing">
+  </div>
+  <p class="ck-cc-l"><a href="{{privacyUrl}}">{{privacy}}</a> · <a href="{{imprintUrl}}">{{imprint}}</a></p>
+  <div class="ck-cc-b">
+    <button type="button" class="ck-cc-btn" data-ck-action="accept">{{acceptAll}}</button>
+    <button type="button" class="ck-cc-btn" data-ck-action="reject">{{rejectAll}}</button>
+    <button type="button" class="ck-cc-btn" data-ck-action="save">{{saveChoice}}</button>
+  </div>
+</dialog>

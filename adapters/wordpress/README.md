@@ -55,6 +55,7 @@ adapter's site config and takes the same values
 | Banner language | `language` | `de` or `en`: the language of the first layer, the dialog and the reopen link |
 | Privacy policy, Imprint | `privacyUrl`, `imprintUrl` | an `https://` URL, a path that starts with one `/`, or a `#fragment`; the reopen link goes to the privacy policy |
 | Server cleanup | `serverCleanup` | on: the cleanup's deletions in the page responses as well ([below](#server-cleanup)) |
+| Texts: one field per string of the kit | `texts.<key>` | optional: the site's own text in the banner language — the HTML adapter's `languages.<lang>.texts`; empty keeps the kit's sample (below) |
 
 Saving checks every value as the HTML adapter checks a site config — both run the same cases,
 [`adapters/html/test/config-cases.json`](../html/test/config-cases.json) — and that WordPress's `esc_url()` keeps
@@ -63,19 +64,31 @@ into the page. All through WordPress's Settings API (its nonce, the capability, 
 value is refused with an error notice that names it, the saved settings stay as they were, and the form shows the
 values as posted, once, to correct them. Settings that are invalid when a page is rendered — written with WP-CLI,
 which passes the settings page, or left by an older version — make the plugin put nothing into the page and send
-nothing, and read every visitor as undecided, as the kit does without a config; the settings page then says why.
+nothing, and read every visitor as undecided, as the kit does without a config; the settings page then says why. So
+does a damaged file in the plugin's `i18n/`: install the plugin folder again.
 
 WP-CLI: the option `consent_kit` holds the settings, the keys of the table; [`test/settings.json`](test/settings.json)
 is the HTML adapter's example site config in that form:
 
 ```sh
 wp option update consent_kit --format=json < settings.json
+wp option patch insert consent_kit texts '{"acceptAll": "Accept all"}' --format=json   # own texts, while there are none
+wp option patch update consent_kit texts acceptAll 'Accept all'                          # one of them, once there are
 ```
 
-**The texts.** The first layer, the dialog and the reopen link show the kit's sample strings
-([kit/src/i18n/](../../kit/src/i18n/)), written for a site with an analytics and an advertising service. They are
-samples, not legal advice. The plugin has no field for a site's own texts yet: they come with the next step, for the
-HTML adapter and the plugin together.
+**The texts.** The section Texts has one field per string of the kit — the keys of
+[kit/src/i18n/](../../kit/src/i18n/), `_note` excepted —, each with a note on where it shows
+([kit/README.md, i18n](../../kit/README.md#i18n)). Each field shows the sample of the banner language as its
+placeholder, and a field left empty keeps that sample. The samples are written for a site with an analytics and an
+advertising service and are not legal advice: put the site's own, legally reviewed texts there. Only **First layer:
+text** (`text`, the first layer's paragraph) has several lines: a line break starts a new block of the paragraph
+([kit/README.md, The first-layer text in blocks](../../kit/README.md#the-first-layer-text-in-blocks)) — split a long
+text at sentence boundaries. Every other text is one line (a line break written there with WP-CLI stays in it, and a
+browser shows it as a space). **Dialog: title** (`dialogTitle`) also names the reopen link, which the first-layer text
+sends visitors to: keep the two in step. The texts are one set, for the banner language: changing the language keeps
+them. Saving checks them as the HTML adapter checks its `texts` — a key of the kit's strings only, a text that is more
+than whitespace — and that each is UTF-8. The form trims a text at its ends (ASCII whitespace: spaces, tabs, line
+breaks), as it trims every field; WP-CLI, like the HTML adapter, keeps a text as written.
 
 ## What goes into a page
 
@@ -88,12 +101,16 @@ HTML adapter and the plugin together.
 | `send_headers` | the server cleanup's header fields | before the response's output ([Server cleanup](#server-cleanup)) |
 
 - **The fragments** are the HTML adapter's: the plugin's `fragments/` folder is the HTML adapter's output
-  (`fragments()` in `adapters/html/generate.mjs`) with placeholders as the site's values, and the plugin fills them
-  on every page — each URL with `esc_url()`, the site id with `esc_attr()`, the config block with the settings as
-  JSON in which every `<` is escaped, as the HTML adapter writes it, so no value can close the element; `cleanup`
-  and its rules are JSON objects there, as in the HTML adapter, although PHP reads a stored `{}` as `[]`. For the
-  HTML adapter's example values the page carries its fragments byte for byte. Other values can differ in their bytes
-  only where WordPress writes a character in another form, for the same URL: `esc_url()` writes an `&` as `&#038;`.
+  (`fragments()` in `adapters/html/generate.mjs`) with placeholders as the site's values — the first layer and the
+  dialog are the reference markup with the strings as placeholders too, the reopen link has its text as one — and
+  the plugin fills them on every page: each URL with `esc_url()`, the site id with `esc_attr()`, each text — the
+  site's own or the sample — as the HTML adapter fills it (`renderBanner()` in `kit/build.mjs`: `&`, `<`, `>` and `"`
+  escaped, the first-layer text in blocks; not with `esc_html()`, which writes `'` as `&#039;` and keeps an entity as
+  written), the config block with the settings as JSON in which every `<` is escaped, as the HTML adapter writes it,
+  so no value can close the element; `cleanup` and its rules are JSON objects there, as in the HTML adapter, although
+  PHP reads a stored `{}` as `[]`. For the HTML adapter's example values the page carries its fragments byte for byte,
+  and with the same own texts the HTML adapter's fragments for them. Other values can differ in their bytes only where
+  WordPress writes a character in another form, for the same URL: `esc_url()` writes an `&` as `&#038;`.
 - **kit.js** comes from the plugin folder's URL (`plugins_url()`):
   `…/wp-content/plugins/consent-kit/fragments/consent-kit/kit.<sha256>.js`, named by its SHA-256. It is on the pages'
   origin only while that URL has their scheme, host and port (`home_url()`): WordPress builds it from the site
@@ -152,9 +169,7 @@ store such a response, but not every page cache honours it.
 
 ## What it does not do
 
-- **A site's own texts, yet**: the banner shows the kit's sample strings in the banner language, which are not legal
-  advice; a site's own texts come with the next step, for the HTML adapter and the plugin together.
-- **Several languages**: one banner language for the whole site.
+- **Several languages**: one banner language, with one set of texts, for the whole site.
 - **Write the choice cookie**: the kit is its only writer, and every decision there sends a record; the server reads
   it only.
 - **Rewrite other plugins' tags** into gated ones: that stays the site's (above).
@@ -167,29 +182,35 @@ store such a response, but not every page cache honours it.
 
 | File | Origin |
 |---|---|
-| `consent-kit/fragments/` | generated by `node kit/build.mjs` (`generate.mjs`): the HTML adapter's fragments with the placeholders `{{privacyUrl}}`, `{{imprintUrl}}`, `{{endpoint}}`, `{{site}}`, `{{kitPath}}` and the config block's JSON string `"{{config}}"`, and kit.js under its SHA-256 name |
+| `consent-kit/fragments/` | generated by `node kit/build.mjs` (`generate.mjs`): the HTML adapter's fragments with the placeholders `{{privacyUrl}}`, `{{imprintUrl}}`, `{{endpoint}}`, `{{site}}`, `{{kitPath}}`, the config block's JSON string `"{{config}}"` and each string's (`{{title}}`, `{{text\|blocks}}`, …) — one `banner.html` and one `footer-link.html` for every language —, and kit.js under its SHA-256 name |
+| `consent-kit/i18n/` | generated: `kit/src/i18n/` byte for byte — the kit's languages and sample strings, for every text a site leaves out |
 | `consent-kit/helper/` | generated: `adapters/php/src/` byte for byte — so without the `ABSPATH` guard of the plugin's own files: they only declare classes, and a direct request for one runs nothing else |
 | `consent-kit/consent-kit.php` | hand-written: the hooks, the settings page and the public functions — wiring only |
 | `consent-kit/includes/Site.php` | hand-written: the logic — the settings checks, the form and its save, the server cleanup's header fields, the fragments filled |
 
-Never edit a generated file: change the source and run `npm run build`, which replaces both folders; a test fails
-while a committed copy differs from a fresh generation.
+Never edit a generated file: change the source and run `npm run build`, which replaces the three folders, and writes
+`test/texts/`, the HTML adapter's rendering of the tests' texts fixture; a test fails while a committed copy differs
+from a fresh generation.
 
 ## Tests
 
 - **`test/wordpress.test.ts`** (`npm test`, the gate): the generated folders are one fresh generation and nothing
-  else; every placeholder in the templates is one that `includes/Site.php` fills, as often as the markup has it; the
-  plugin's version is the kit's.
+  else, and `test/texts/` is the HTML adapter's rendering of [`test/texts.json`](test/texts.json); every placeholder
+  in the templates is one that `includes/Site.php` fills, as often as the markup has it; every string of the kit has
+  a field with a label and a note on the settings page, and no label is used twice; the plugin's version is the
+  kit's.
 - **`test/SiteTest.php`** (PHPUnit, the gate's PHP step):
   - the settings checks with every case of [`adapters/html/test/config-cases.json`](../html/test/config-cases.json) —
     the HTML adapter's own cases, which its tests run too, so a new check there fails here until it is ported — and
-    the plugin's own (no saved settings, the server cleanup's switch, a value that is not UTF-8, JavaScript's
-    whitespace in a URL);
+    the plugin's own (no saved settings, the server cleanup's switch, values that are not UTF-8, JavaScript's
+    whitespace in a URL), and a damaged `i18n/` file refused as invalid settings are;
   - the URLs `esc_url()` would change, the form's fields as settings and their save (the second run of a first
     save included), the server cleanup's header fields, the origin check;
   - the fragments of [`test/settings.json`](test/settings.json) equal to the HTML adapter's committed example byte
-    for byte (both languages), `cleanup` written as objects, values that try to close the config block or leave an
-    attribute.
+    for byte (both languages, the sample strings), and with the own texts of `test/texts.json` — a `</script>`,
+    quotes and apostrophes, an `&` and an entity, a `{{placeholder}}` as text, a first-layer text in two blocks —
+    equal to `test/texts/`; `cleanup` written as objects, values that try to close the config block or leave an
+    attribute, the texts' form fields and their save.
 
   WordPress's two escaping functions stand in as `htmlspecialchars()` ([`test/bootstrap.php`](test/bootstrap.php)).
   It runs with the PHP helper's dev install: `composer install` in `adapters/php`, then, from the repository root,
@@ -210,9 +231,13 @@ while a committed copy differs from a fresh generation.
     cookie only on plain http, for a granting choice and for a cross-site frame, nothing with the switch off;
   - invalid saved settings failing closed, links that `esc_url()` empties or rewrites among them, with the reason on
     the settings page; a value that tries to close the config block;
-  - the settings page: the form, an invalid value refused with an HTML-escaped notice and the posted values kept, a
-    valid first save stored exactly, a wrong nonce and a subscriber refused with 403, the warning for kit.js from
-    another origin.
+  - the own texts of `test/texts.json`: the first layer, the dialog and the reopen link as `test/texts/`, byte for
+    byte; a text of spaces only failing closed, without a PHP error;
+  - the settings page: the form — 30 fields, no label twice, its Texts fields empty, the samples as placeholders —,
+    an invalid value refused with an HTML-escaped notice and the posted values kept, a valid first save stored
+    exactly, a text of no-break spaces refused, an own text saved and shown escaped in both layers, a text with an
+    entity as written (`&amp;`) shown as written in its field and kept by the next save, a wrong nonce and a
+    subscriber refused with 403, the warning for kit.js from another origin.
 
   It writes only below `.tmp/wordpress-test/` and removes its containers and volumes at the end, after a failure
   too; `CONSENT_KIT_WP_PORT` moves it off `127.0.0.1:8890`.
