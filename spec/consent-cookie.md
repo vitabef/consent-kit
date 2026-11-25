@@ -4,8 +4,9 @@ Specification version 1 · test vectors: [`vectors.json`](vectors.json), version
 
 The kit keeps a visitor's consent decision in one first-party cookie, and its inline head snippet
 (`kit/src/head.js`) reads that cookie on every page. This document says how a server-side helper — PHP, Node, any
-language — reads the same cookie from a request's `Cookie` header and reaches the same answer. The head snippet is
-the reference: where this text and `head.js` disagree, `head.js` is right. [`vectors.json`](vectors.json) pins the
+language — reads the same cookie from a request's `Cookie` header and reaches the same answer, or a stricter one where
+it cannot read what the browser may: raw bytes that are not UTF-8 (§ 3), a limit of its JSON parser (§ 4) — there a
+copy denies both categories. The head snippet is the reference: where this text and `head.js` disagree, `head.js` is right. [`vectors.json`](vectors.json) pins the
 rules: a helper conforms when it passes every vector, and `kit/test/cookie-vectors.test.ts` runs the shipped head
 snippet over the same vectors.
 
@@ -42,8 +43,10 @@ verdict(config, header):
   for each piece of header split at ";":              # § 1
     remove spaces and tabs at both ends of piece
     if piece does not start with cookie + "=": next    # § 2
-    text = strict-percent-decode(rest of piece)        # § 3, a failure: next
-    o = parse-strict-json(text)                        # § 4, a failure: next
+    text = strict-percent-decode(rest of piece)        # § 3, a failure: next — but raw bytes
+                                                       #   that are not UTF-8: add {a: 0, m: 0}, next
+    o = parse-strict-json(text)                        # § 4, a failure: next — but one for a limit
+                                                       #   of the parser (§ 4): add {a: 0, m: 0}, next
     if o is a valid choice: add o to copies            # § 5
   if copies is empty: return UNDECIDED                 # § 6
   return { decided: true,
@@ -53,7 +56,8 @@ verdict(config, header):
 UNDECIDED = { decided: false, analytics: false, marketing: false }
 ```
 
-A copy that fails a step is skipped: it neither counts nor denies. No step throws, and no failure ever grants.
+A copy that fails a step is skipped: it neither counts nor denies — except one with raw bytes that are not UTF-8
+(§ 3) or one that a server's parser refuses for a limit of its own (§ 4), which denies. No step throws, and no failure ever grants.
 
 ### 1. Pieces
 
@@ -90,10 +94,13 @@ The head snippet decodes the value with `decodeURIComponent`. The server equival
    character like any other, not something to drop.
 
 For every value a browser can send, this is exactly `decodeURIComponent`: a raw non-ASCII character in the value
-reaches the server as its UTF-8 bytes. Node hands a header to JavaScript as a latin1 string (one character per byte),
-so `decodeURIComponent()` there never checks the UTF-8 of raw bytes: only a header the kit never causes (raw
-non-UTF-8 bytes stored by another writer) reads differently, and it grants nothing its sender could not grant with a
-valid copy.
+reaches the server as its UTF-8 bytes. **Raw bytes that are not UTF-8** — not `%`-escaped; only another writer stores
+them — make the copy one that denies both categories, whatever the steps above find, and it is never skipped: the
+head snippet reads them through `document.cookie`, a string the browser builds from them, so the server cannot tell
+whether that copy counts there, and skipping it would drop its denial from the minimum (§ 6) and let another copy
+grant. A server that gets the header as a latin1 string (Node: one character per byte) checks the bytes it stands
+for. An escaped sequence that is not UTF-8 (`%FF`) stays malformed: `decodeURIComponent` throws on it, and the head
+snippet skips that copy too. No vector pins raw bytes that are not UTF-8: a JSON file holds text, not bytes.
 
 ### 4. Parsing the JSON
 
@@ -102,6 +109,13 @@ is allowed; nothing else that a lenient parser takes: no trailing comma, no sing
 zero (`01`), no `NaN` or `Infinity` literal — in any member, an ignored one included — and no byte order mark. A
 member that occurs more than once counts with its last value. A result that is a string is never parsed a second
 time. Text that is not JSON makes the copy malformed.
+
+**A limit of the parser.** Some JSON parsers refuse text that `JSON.parse` reads: an escaped unpaired surrogate
+(`"\ud800"`), a nesting deeper than they read. A copy that a server's parser refuses for such a limit of its own counts
+as a copy that denies both categories, and is never skipped: skipping it would drop its denial from the minimum (§ 6)
+and let another copy grant what the browser denies. That holds even when the text has an error after that point,
+which a parser that stopped there cannot see. This only ever denies more than the browser: the verdict may read
+decided with both categories denied where the head snippet reads undecided or grants — never the other way.
 
 ### 5. A valid choice
 
@@ -134,7 +148,8 @@ ties to even — what `JSON.parse` does:
 With one valid copy or more, the visitor is **decided**, and a category is granted only when **every** valid copy
 grants it: each category's minimum over the copies. Two copies granting and denying both deny both; crossed copies
 (`a: 1, m: 0` and `a: 0, m: 1`) deny both too — the result can be stricter than every single copy. Malformed copies
-and copies of another revision take no part. Without a valid copy the visitor is **undecided**.
+and copies of another revision take no part; a copy with raw bytes that are not UTF-8 (§ 3) or refused for a limit of
+the server's parser (§ 4) takes part, denying both. Without a valid copy the visitor is **undecided**.
 
 ## The verdict
 
@@ -143,11 +158,12 @@ and copies of another revision take no part. Without a valid copy the visitor is
 | Situation | `decided` | `analytics` | `marketing` |
 |---|---|---|---|
 | no valid config | `false` | `false` | `false` |
-| no valid copy | `false` | `false` | `false` |
-| one valid copy or more | `true` | every copy has `a: 1` | every copy has `m: 1` |
+| no valid copy, and none that denies (§§ 3, 4) | `false` | `false` | `false` |
+| one valid copy or more, or one that denies (§§ 3, 4) | `true` | every such copy has `a: 1` | every such copy has `m: 1` |
 
 Undecided denies every category: **fail-closed**. The verdict is the head snippet's `consentKit.get()` without
-`revision`, in a browser without Global Privacy Control.
+`revision`, in a browser without Global Privacy Control — except for a copy that the server cannot read (§§ 3, 4):
+it denies there, so the verdict may be decided and stricter than `get()`, never more permissive.
 
 The server reads the copies the request carries. They are the page's own, except in two cases: the cookie is
 `SameSite=Lax`, so a cross-site request other than a top-level `GET` navigation (a form `POST` from another site, a
@@ -179,10 +195,12 @@ cannot read — an `HttpOnly` one, or one whose `Path` leaves the page out — w
   `Domain`), nor, on a page served over plain http, any `Secure` cookie — limits the kit's own deletions share.
   `cleanup.<category>.localStorage` is the browser's: the kit removes those keys.
 
-  Clean up only on a request that would carry the choice cookie if the visitor had one — not on a cross-site request
-  other than a top-level `GET` navigation (Fetch Metadata: `Sec-Fetch-Site: cross-site`, unless the method is `GET`
-  with `Sec-Fetch-Mode: navigate` and `Sec-Fetch-Dest: document`). Its verdict is undecided because the cookie was
-  withheld, not because the visitor denied.
+  Clean up only on a request that would carry the choice cookie if the visitor had one: an https request — the kit
+  writes the cookie `Secure` on https, so a plain-http request to the same site goes without it while it still
+  carries the tag cookies — and not a cross-site request other than a top-level `GET` navigation (Fetch Metadata:
+  `Sec-Fetch-Site: cross-site`, unless the method is `GET` with `Sec-Fetch-Mode: navigate` and
+  `Sec-Fetch-Dest: document`). Either verdict is undecided because the cookie was withheld, not because the visitor
+  denied. A site served on plain http only (a test host) gets no server cleanup: the kit's own cleanup still runs.
 - **Delete `legacy` cookies** (a previous consent tool's) the same way, on any response — the kit does it on every
   page load.
 
@@ -233,8 +251,10 @@ The usual ways a helper misses these rules — each one is pinned by a vector:
   accepts `NaN` and `Infinity` unless `parse_constant` rejects them. A parser that refuses a number beyond binary64
   (`1e400`) gives the right answer for `v`, `a`, `m` and `t`, which accept none; in another member, which the head
   snippet ignores, it must not fail the copy: decode only the four members, skipping the others unconverted.
-- **Parser limits.** PHP's `json_decode()` stops at depth 512 by default, and a 4,096-byte cookie value can nest
-  about 2,000 levels: pass a larger depth. A parser that keeps the first of a repeated member, or rejects the object,
+- **Parser limits.** PHP's `json_decode()` stops at depth 512 by default, and one vector nests 600 levels: pass a
+  larger depth. Past that depth (a 4,096-byte cookie value can nest about 2,000 levels) and at an escaped unpaired
+  surrogate it refuses the text (`JSON_ERROR_DEPTH`, `JSON_ERROR_UTF16`): count that copy as denying (§ 4), never
+  skip it. A parser that keeps the first of a repeated member, or rejects the object,
   reads differently: the last one counts. A lenient parser takes what `JSON.parse` rejects: comments, a leading zero,
   `NaN`.
 - **The prototype (JavaScript).** Read the members of the parsed object as they are: copying it into another object

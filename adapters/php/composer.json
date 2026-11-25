@@ -1,0 +1,25 @@
+{
+    "name": "vitabef/consent-kit-php",
+    "description": "Reads the consent kit's stored choice from a request's Cookie header and builds the cleanup's Set-Cookie deletions.",
+    "type": "library",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5 || ^11.5 || ^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "ConsentKit\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ConsentKit\\Test\\": "test/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    }
+}

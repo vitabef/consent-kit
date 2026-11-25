@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The PHP helper's suite: `composer install`, then `composer test`, in adapters/php. -->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         cacheResult="false"
+         failOnDeprecation="true"
+         failOnNotice="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="consent-kit-php">
+            <directory>test</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+</phpunit>

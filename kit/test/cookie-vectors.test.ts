@@ -43,9 +43,9 @@ afterEach(() => {
 });
 
 describe("spec/vectors.json", () => {
-	it("version 1, 122 vectors (one deleted fails here), every vector named once, every expectation fail-closed (undecided grants nothing)", () => {
+	it("version 1, 124 vectors (one deleted fails here), every vector named once, every expectation fail-closed (undecided grants nothing)", () => {
 		expect(FILE.version).toBe(1);
-		expect(FILE.vectors).toHaveLength(122);
+		expect(FILE.vectors).toHaveLength(124);
 		expect(new Set(FILE.vectors.map((v) => v.name)).size).toBe(FILE.vectors.length);
 		for (const { name, expected } of FILE.vectors) {
 			expect(Object.keys(expected), name).toEqual(["decided", "analytics", "marketing"]);

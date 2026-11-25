@@ -4,6 +4,10 @@ node_modules/
 # Kit build output (node kit/build.mjs)
 kit/dist/
 
+# The PHP helper's dev install (composer install in adapters/php) — a library commits no lock file
+adapters/php/vendor/
+adapters/php/composer.lock
+
 # Wrangler local state
 .wrangler/
 
