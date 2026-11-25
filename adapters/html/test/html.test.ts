@@ -7,7 +7,8 @@
  *     category mapped, the head snippet and the styles byte for byte as built, the reference markup rendered per
  *     language (the site's own texts included, the first-layer text in blocks), a reopen link, kit.js fingerprinted
  *     with a matching integrity; no value can close the config block or leave an attribute;
- *   - every invalid site config fails with its message; the command line writes the files and fails loudly.
+ *   - every invalid site config of test/config-cases.json fails with its message (the WordPress plugin's tests run
+ *     the same cases against its port of the checks); the command line writes the files and fails loudly.
  */
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -137,73 +138,22 @@ describe("the fragments", () => {
 	});
 });
 
-describe("an invalid site config fails with its message", () => {
-	it.each([
-		["not an object", [], "the site config must be a JSON object"],
-		["a misspelt key", variant({ revison: 2 }), "revison is not a key"],
-		["revision 0", variant({ revision: 0 }), "revision must be an integer from 1 to 1000000, not 0"],
-		["revision as a string", variant({ revision: "1" }), 'revision must be an integer from 1 to 1000000, not "1"'],
-		["a fractional revision", variant({ revision: 1.5 }), "revision must be an integer from 1 to 1000000, not 1.5"],
-		["revision above 1,000,000", variant({ revision: 1000001 }), "revision must be an integer from 1 to 1000000, not 1000001"],
-		["no cookie", variant({ cookie: undefined }), 'cookie must be a cookie name (letters, digits, "_", ".", "-"), not nothing'],
-		["a cookie name with a space", variant({ cookie: "ck consent" }), 'cookie must be a cookie name (letters, digits, "_", ".", "-"), not "ck consent"'],
-		["a domain with a scheme", variant({ domain: "https://example.com" }), 'domain must be a lower-case domain such as "example.com"'],
-		["a domain with a leading dot", variant({ domain: ".example.com" }), 'domain must be a lower-case domain such as "example.com"'],
-		["no endpoint", variant({ endpoint: undefined }), 'endpoint must be the records URL (https://…/v1/record), or "" for no records, not nothing'],
-		["an http endpoint", variant({ endpoint: "http://consent.example.com/v1/record" }), "endpoint must be the records URL"],
-		["an endpoint without a site id", variant({ site: undefined }), "site is missing: the endpoint needs the site id"],
-		["a site id with a space", variant({ site: "example site" }), 'site must be a site id (letters, digits, "_", ".", "-"), not "example site"'],
-		["an unknown category", variant({ categories: { ads: "ads" } }), "categories.ads is not a key (analytics, marketing)"],
-		["a data-consent value with a space", variant({ categories: { analytics: "web stats" } }), 'categories.analytics must be a data-consent value (letters, digits, "_", "-"), not "web stats"'],
-		[
-			"two categories on one data-consent value",
-			variant({ categories: { analytics: "tags", marketing: "tags" } }),
-			'categories: analytics and marketing must activate different data-consent values, not both "tags"',
-		],
-		[
-			"analytics on marketing's own name",
-			variant({ categories: { analytics: "marketing" } }),
-			'categories: analytics and marketing must activate different data-consent values, not both "marketing"',
-		],
-		["an unknown cleanup category", variant({ cleanup: { ads: { cookies: ["_ads"] } } }), "cleanup.ads is not a key (analytics, marketing)"],
-		["a cleanup rule that is not an object", variant({ cleanup: { analytics: "_ga" } }), 'cleanup.analytics must be an object (cookies, localStorage), not "_ga"'],
-		["an unknown key in a cleanup rule", variant({ cleanup: { analytics: { files: ["_ga"] } } }), "cleanup.analytics.files is not a key (cookies, localStorage)"],
-		["cleanup cookies as a string", variant({ cleanup: { analytics: { cookies: "_ga" } } }), "cleanup.analytics.cookies must be a list"],
-		["a cleanup cookie with a * inside", variant({ cleanup: { analytics: { cookies: ["_g*a"] } } }), 'cleanup.analytics.cookies: "_g*a" is not a cookie name or a prefix ending in "*"'],
-		["an empty localStorage key", variant({ cleanup: { marketing: { localStorage: [""] } } }), 'cleanup.marketing.localStorage: "" is not a non-empty key'],
-		[
-			"a cleanup prefix that matches the choice cookie",
-			variant({ cleanup: { analytics: { cookies: ["_ga", "ck_*"] } } }),
-			'cleanup.analytics.cookies: "ck_*" would delete the choice cookie "ck_consent"',
-		],
-		[
-			"a cleanup name that is the choice cookie",
-			variant({ cleanup: { marketing: { cookies: ["ck_consent"] } } }),
-			'cleanup.marketing.cookies: "ck_consent" would delete the choice cookie "ck_consent"',
-		],
-		[
-			"a legacy name that is the choice cookie",
-			variant({ legacy: ["previous-tool-consent", "ck_consent"] }),
-			'legacy: "ck_consent" is the choice cookie, which kit.js would delete on every page load',
-		],
-		["a legacy name with a space", variant({ legacy: ["previous tool"] }), 'legacy: "previous tool" is not a cookie name'],
-		["legacy as a string", variant({ legacy: "previous-tool-consent" }), "legacy must be a list of"],
-		["no languages", variant({ languages: {} }), "languages must be an object with an entry per language (de, en)"],
-		["a language without the kit's strings", variant({ languages: { fr: { privacyUrl: "/p/", imprintUrl: "/i/" } } }), "languages.fr: the kit has no strings for it (de, en)"],
-		["an unknown key of a language", variant(language("de", { cookieLink: "x" })), "languages.de.cookieLink is not a key (privacyUrl, imprintUrl, texts)"],
-		["a javascript: privacy link", variant(language("de", { privacyUrl: "javascript:alert(1)" })), 'languages.de.privacyUrl must be an https:// URL, a path that starts with one "/" or a #fragment, not "javascript:alert(1)"'],
-		["a protocol-relative privacy link", variant(language("en", { privacyUrl: "//evil.example/x" })), 'languages.en.privacyUrl must be an https:// URL, a path that starts with one "/" or a #fragment, not "//evil.example/x"'],
-		["an imprint link that starts with /\\", variant(language("de", { imprintUrl: "/\\evil.example/x" })), "languages.de.imprintUrl must be an https:// URL"],
-		["an http imprint link", variant(language("en", { imprintUrl: "http://www.example.com/imprint/" })), "languages.en.imprintUrl must be an https:// URL"],
-		["a relative imprint link", variant(language("de", { imprintUrl: "impressum.html" })), "languages.de.imprintUrl must be an https:// URL"],
-		["a bare # as the privacy link", variant(language("de", { privacyUrl: "#" })), "languages.de.privacyUrl must be an https:// URL"],
-		["no imprint link", variant(language("en", { imprintUrl: undefined })), 'languages.en.imprintUrl must be an https:// URL, a path that starts with one "/" or a #fragment, not nothing'],
-		["an unknown text key", variant(language("en", { texts: { cookieLink: "x" } })), "languages.en.texts.cookieLink is not a key"],
-		["the note as a text key", variant(language("en", { texts: { _note: "x" } })), "languages.en.texts._note is not a key"],
-		["an empty text", variant(language("en", { texts: { acceptAll: " " } })), 'languages.en.texts.acceptAll must be a non-empty string, not " "'],
-		["a text that is not a string", variant(language("de", { texts: { acceptAll: 1 } })), "languages.de.texts.acceptAll must be a non-empty string, not 1"],
-	])("%s", (_what, site, message) => {
-		expect(() => generate(site)).toThrow(`consent-kit: ${message}`);
+describe("an invalid site config fails with its message (test/config-cases.json, run by the WordPress plugin's tests too)", () => {
+	type Case = { name: string; input?: unknown; site?: Site; language?: [string, Site]; message: string };
+	const { cases } = JSON.parse(readFileSync(path.join(ADAPTER, "test/config-cases.json"), "utf8")) as { cases: Case[] };
+	/** A null value is the key left out. */
+	const present = (values: Site): Site => Object.fromEntries(Object.entries(values).filter(([, value]) => value !== null));
+	/** The case's site config: its input, or the example with its changes. */
+	const config = ({ input, site = {}, language: [lang, values] = ["", {}] }: Case): unknown => {
+		if (input !== undefined) return input;
+		const changed = present(variant(site));
+		if (!lang) return changed;
+		const languages = changed.languages as Record<string, Site>;
+		return { ...changed, languages: { ...languages, [lang]: present({ ...languages[lang], ...values }) } };
+	};
+
+	it.each(cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+		expect(() => generate(config(c))).toThrow(`consent-kit: ${c.message}`);
 	});
 });
 

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The WordPress plugin's suite, run with the PHP helper's dev install of PHPUnit (adapters/wordpress/README.md, Tests). -->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="../php/vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="test/bootstrap.php"
+         cacheResult="false"
+         failOnDeprecation="true"
+         failOnNotice="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="consent-kit-wordpress">
+            <directory>test</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>consent-kit/includes</directory>
+        </include>
+    </source>
+</phpunit>

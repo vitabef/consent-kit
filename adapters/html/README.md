@@ -128,4 +128,5 @@ generator stops with a message that starts with `consent-kit:` and the file's na
   the site's own (the first-layer text in blocks), the reopen link, kit.js named by its SHA-256 with a matching
   integrity;
 - a value that tries to close the config block or leave an attribute, the optional keys left out, every check of the
-  site config with its message, and the command line.
+  site config with its message — the cases of `test/config-cases.json`, which the WordPress plugin's tests run too —
+  and the command line.
