@@ -11,6 +11,8 @@
 #                   stored-choice vectors, Worker in node)
 #   5. kit build  — node kit/build.mjs: minify, write kit/dist/, dist/, the Hugo adapter's generated files and the
 #                   HTML adapter's example, exit 1 over a brotli budget
+#   6. php        — the PHP helper's PHPUnit suite (adapters/php), where php and its dev install (composer install
+#                   in adapters/php) are here — SKIPPED otherwise: said there and in the last line, never silently
 # Exit code: 0 = all green (push-ready), non-zero = a step failed (DO NOT push).
 # Usage: sh scripts/pre-push-gate.sh   (or: npm run gate)
 # =============================================================================
@@ -50,8 +52,22 @@ esac
 step "Tests (vitest run)"                  ./node_modules/.bin/vitest run
 step "Kit build + brotli budgets"          node kit/build.mjs
 
-if [ -n "$hugo_skipped" ]; then
-  printf '\n\033[33m✓ pre-push gate GREEN — but WITHOUT Hugo build tests: SKIPPED for a Hugo version missing here (see the Hugo step)\033[0m\n'
+# The gate installs nothing: the PHP suite runs only with php and the helper's dev install already here.
+php_skipped=""
+if command -v php >/dev/null 2>&1 && [ -f adapters/php/vendor/bin/phpunit ]; then
+  step "PHP helper tests (phpunit)"        php adapters/php/vendor/bin/phpunit --configuration adapters/php/phpunit.xml.dist
 else
-  printf '\n\033[32m✓ pre-push gate GREEN — push-ready (Hugo build tests included: 0.141.0 and 0.169.0)\033[0m\n'
+  php_skipped=1
+  printf '\n\033[1m▶ %s\033[0m\n' "PHP helper tests (phpunit)"
+  printf '\033[33m  WARNING: php or the dev install of the helper is missing here: the PHP helper tests are SKIPPED.\033[0m\n'
+  printf '  Install it with: composer install --working-dir=adapters/php\n'
+fi
+
+skipped=""
+if [ -n "$hugo_skipped" ]; then skipped="Hugo build tests (a Hugo version missing here)"; fi
+if [ -n "$php_skipped" ]; then skipped="${skipped:+$skipped and }PHP helper tests (no php or dev install here)"; fi
+if [ -n "$skipped" ]; then
+  printf '\n\033[33m✓ pre-push gate GREEN — but WITHOUT %s: SKIPPED (see their steps)\033[0m\n' "$skipped"
+else
+  printf '\n\033[32m✓ pre-push gate GREEN — push-ready (Hugo build tests included: 0.141.0 and 0.169.0; PHP helper tests included)\033[0m\n'
 fi
