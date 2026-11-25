@@ -1,0 +1,17 @@
+{
+  "_note": "Sample wording, not legal advice — every site supplies its own legally reviewed texts.",
+  "title": "Privacy settings",
+  "text": "We would like to use cookies and similar technologies with your consent: for an analytics service that measures how this website is used, and for an advertising service that measures the success of our ads and may also show you our ads on other websites. You can withdraw your consent at any time with effect for the future via “Cookie settings” at the bottom of the page.",
+  "privacy": "Privacy policy",
+  "imprint": "Imprint",
+  "acceptAll": "Accept all",
+  "rejectAll": "Reject all",
+  "settings": "Settings",
+  "dialogTitle": "Cookie settings",
+  "close": "Close",
+  "analytics": "Statistics",
+  "analyticsDetails": "An analytics service measures how this website is used, for example which pages are visited. It stores cookies in your browser for this.",
+  "marketing": "Marketing",
+  "marketingDetails": "An advertising service measures the success of our ads and may also show you our ads on other websites. It stores cookies in your browser for this.",
+  "saveChoice": "Save choice"
+}

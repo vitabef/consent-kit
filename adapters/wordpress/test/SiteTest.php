@@ -55,6 +55,16 @@ final class SiteTest extends TestCase
         self::assertSame(['de', 'en'], Site::languages());
     }
 
+    public function testTheSitesOwnTextsFillTheTemplatesIntoTheHtmlAdaptersBytes(): void
+    {
+        // test/texts/: the HTML adapter's rendering of these settings with test/texts.json (adapters/wordpress/generate.mjs)
+        $texts = json_decode((string) file_get_contents(__DIR__ . '/texts.json'), true, 512, JSON_THROW_ON_ERROR);
+        $values = Site::values(self::settings(['texts' => $texts]));
+        self::assertSame((string) file_get_contents(__DIR__ . '/texts/banner.html'), Site::banner($values));
+        self::assertSame((string) file_get_contents(__DIR__ . '/texts/footer-link.html'), Site::footerLink($values));
+        self::assertSame('Reject all', $values['texts']['rejectAll'], 'a text the site leaves out: the sample');
+    }
+
     public function testTheValues(): void
     {
         $values = Site::values(self::settings());
@@ -67,9 +77,11 @@ final class SiteTest extends TestCase
             'legacy' => ['previous-tool-consent'],
         ];
         self::assertSame(
-            ['config' => $config, 'endpoint' => 'https://consent.example.com/v1/record', 'site' => 'example-site', 'language' => 'en', 'privacyUrl' => '/en/privacy/', 'imprintUrl' => '/en/imprint/', 'serverCleanup' => true],
+            ['config' => $config, 'endpoint' => 'https://consent.example.com/v1/record', 'site' => 'example-site', 'language' => 'en', 'privacyUrl' => '/en/privacy/', 'imprintUrl' => '/en/imprint/', 'serverCleanup' => true, 'texts' => Site::strings('en')],
             $values,
         );
+        self::assertSame(['Accept all', 'Alle akzeptieren'], [$values['texts']['acceptAll'], Site::strings('de')['acceptAll']], 'no own texts: the samples, without the note');
+        self::assertArrayNotHasKey('_note', $values['texts']);
         // the PHP helper reads the same config: the server's verdict and cleanup follow the page's config block
         $helper = Config::fromArray($values['config']);
         self::assertNotNull($helper);
@@ -83,8 +95,8 @@ final class SiteTest extends TestCase
         self::assertSame(['', '', false], [$values['endpoint'], $values['site'], $values['serverCleanup']]);
         self::assertStringContainsString('<script type="application/json" id="ck-config">{"revision":3,"cookie":"site_consent","categories":{"analytics":"analytics","marketing":"marketing"}}</script>', Site::head($values));
         self::assertStringContainsString('data-endpoint="" data-site=""', Site::banner($values));
-        $null = ['domain' => null, 'categories' => null, 'cleanup' => null, 'legacy' => null, 'serverCleanup' => null] + self::settings();
-        self::assertSame(Site::values(self::settings(array_fill_keys(['domain', 'categories', 'cleanup', 'legacy', 'serverCleanup'], null))), Site::values($null), 'null counts as left out');
+        $null = ['domain' => null, 'categories' => null, 'cleanup' => null, 'legacy' => null, 'serverCleanup' => null, 'texts' => null] + self::settings();
+        self::assertSame(Site::values(self::settings(array_fill_keys(['domain', 'categories', 'cleanup', 'legacy', 'serverCleanup', 'texts'], null))), Site::values($null), 'null counts as left out');
     }
 
     /** WordPress's esc_url() as test/run.sh sees it: a #fragment with a ":" emptied, "{" and "}" dropped, "&" as "&#038;". */
@@ -121,7 +133,11 @@ final class SiteTest extends TestCase
         );
         self::assertSame([false, "Consent Kit: privacyUrl \"#a:b\" is not kept by WordPress's esc_url(), which writes \"\""], Site::sanitize(['privacyUrl' => '#a:b'] + $form, false, $escUrl));
         self::assertSame([false, 'Consent Kit: revision must be an integer from 1 to 1000000, not ""'], Site::sanitize('no form', false, $escUrl));
-        self::assertSame([false, 'Consent Kit: x is not a key (revision, cookie, domain, categories, cleanup, legacy, endpoint, site, language, privacyUrl, imprintUrl, serverCleanup)'], Site::sanitize(['x' => 1] + $settings, false, $escUrl), 'a number as revision is no pass');
+        self::assertSame([false, 'Consent Kit: x is not a key (revision, cookie, domain, categories, cleanup, legacy, endpoint, site, language, privacyUrl, imprintUrl, serverCleanup, texts)'], Site::sanitize(['x' => 1] + $settings, false, $escUrl), 'a number as revision is no pass');
+        // the Texts section: saved through the same path
+        self::assertSame([$settings + ['texts' => ['acceptAll' => 'Allow all']], null], Site::sanitize(['texts' => ['acceptAll' => ' Allow all ', 'close' => '']] + $form, false, $escUrl));
+        self::assertSame([['the saved settings'], "Consent Kit: texts.close must be a non-empty string, not \"\u{a0}\""], Site::sanitize(['texts' => ['close' => "\u{a0}"]] + $form, ['the saved settings'], $escUrl), 'PHP\'s trim() keeps a no-break space; the check does not');
+        self::assertStringStartsWith('Consent Kit: texts.cookieLink is not a key (title, text, ', (string) Site::sanitize(['texts' => ['cookieLink' => 'x']] + $form, false, $escUrl)[1]);
     }
 
     public function testTheServerCleanupsHeaderFields(): void
@@ -178,13 +194,15 @@ final class SiteTest extends TestCase
         self::assertStringNotContainsString('<', $block[1]);
         self::assertSame($hostile, json_decode($block[1], true)['cleanup']['marketing']['localStorage']);
 
-        // every value the checks would refuse, filled anyway: each one escaped where it lands
-        $values = ['language' => 'en', 'privacyUrl' => self::HOSTILE, 'imprintUrl' => self::HOSTILE, 'endpoint' => self::HOSTILE, 'site' => self::HOSTILE];
+        // every value the checks would refuse, filled anyway, and texts, which no check refuses: each one escaped where it lands
+        $texts = array_fill_keys(array_keys(Site::strings('en')), self::HOSTILE);
+        $values = ['language' => 'en', 'privacyUrl' => self::HOSTILE, 'imprintUrl' => self::HOSTILE, 'endpoint' => self::HOSTILE, 'site' => self::HOSTILE, 'texts' => $texts];
         foreach ([Site::banner($values), Site::footerLink($values), Site::script(self::HOSTILE)] as $html) {
             self::assertStringNotContainsString('"><img', $html);
             self::assertStringContainsString('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;', $html);
         }
-        self::assertSame(6, substr_count(Site::banner($values), '&quot;&gt;&lt;img'), 'two links in each layer, the endpoint, the site id');
+        self::assertSame(24, substr_count(Site::banner($values), '&quot;&gt;&lt;img'), 'the 18 texts, two links in each layer, the endpoint, the site id');
+        self::assertSame(2, substr_count(Site::footerLink($values), '&quot;&gt;&lt;img'), 'the link and its text');
     }
 
     public function testTheFormsFieldsAsSettings(): void
@@ -207,14 +225,17 @@ final class SiteTest extends TestCase
             'serverCleanup' => '1',
         ];
         self::assertSame(self::settings(), Site::fromForm($form));
+        // a text trimmed, an empty one left out (its sample stays), the first-layer text's line breaks kept
+        $texts = ['acceptAll' => ' Allow all ', 'close' => '', 'text' => "One\r\nTwo\r\n", 'settings' => ['x']];
+        self::assertSame(self::settings(['texts' => ['acceptAll' => 'Allow all', 'text' => "One\r\nTwo"]]), Site::fromForm(['texts' => $texts] + $form));
         // every optional field empty, the checkbox off; a revision that is no number stays text, for its message
         self::assertSame(
             ['revision' => 'abc', 'cookie' => 'ck', 'endpoint' => '', 'language' => 'de', 'privacyUrl' => '#p', 'imprintUrl' => '#i', 'serverCleanup' => false],
-            Site::fromForm(['revision' => 'abc', 'cookie' => 'ck', 'domain' => '', 'legacy' => " \r\n", 'endpoint' => '', 'site' => '', 'language' => 'de', 'privacyUrl' => '#p', 'imprintUrl' => '#i']),
+            Site::fromForm(['revision' => 'abc', 'cookie' => 'ck', 'domain' => '', 'legacy' => " \r\n", 'endpoint' => '', 'site' => '', 'language' => 'de', 'privacyUrl' => '#p', 'imprintUrl' => '#i', 'texts' => ['close' => ' ']]),
         );
         self::assertSame('12345678', Site::fromForm(['revision' => '12345678'])['revision']);
         // a post that is not the form's shape: no field read as anything but empty text
-        self::assertSame(['revision' => '', 'cookie' => '', 'endpoint' => '', 'language' => '', 'privacyUrl' => '', 'imprintUrl' => '', 'serverCleanup' => false], Site::fromForm(['revision' => ['1'], 'categories' => 'x', 'cleanup' => ['analytics' => 'x']]));
+        self::assertSame(['revision' => '', 'cookie' => '', 'endpoint' => '', 'language' => '', 'privacyUrl' => '', 'imprintUrl' => '', 'serverCleanup' => false], Site::fromForm(['revision' => ['1'], 'categories' => 'x', 'cleanup' => ['analytics' => 'x'], 'texts' => 'x']));
     }
 
     /**
@@ -254,6 +275,24 @@ final class SiteTest extends TestCase
         yield 'a privacy link that leaves its attribute' => [$settings(['privacyUrl' => self::HOSTILE]), 'privacyUrl must be an https:// URL, a path that starts with one "/" or a #fragment, not "\"><img src=x onerror=alert(1)>"'];
         yield 'a privacy link with a no-break space' => [$settings(['privacyUrl' => "/a\u{a0}b/"]), 'privacyUrl must be an https:// URL'];
         yield 'the server cleanup as text' => [$settings(['serverCleanup' => '1']), 'serverCleanup must be true or false, not "1"'];
+        yield 'a text that is not UTF-8' => [$settings(['texts' => ['close' => "Schlie\xDFen"]]), "texts.close must be UTF-8 text, not \"Schlie\u{FFFD}en\""];
+    }
+
+    public function testADamagedStringsFileIsRefusedAsInvalidSettingsAre(): void
+    {
+        // a language whose i18n/ file is damaged: the settings are refused, so the plugin emits nothing (consent_kit_values())
+        $file = __DIR__ . '/../consent-kit/i18n/zz.json';
+        foreach (['truncated' => '{"title": "Privacy sett', 'a number as a string' => '{"title": 1}', 'a list' => '["Privacy settings"]'] as $what => $json) {
+            file_put_contents($file, $json);
+            try {
+                Site::values(self::settings(['language' => 'zz']));
+                self::fail("$what: no error");
+            } catch (\InvalidArgumentException $error) {
+                self::assertSame("Consent Kit: the plugin's i18n/zz.json is damaged: install the plugin folder again", $error->getMessage(), $what);
+            } finally {
+                unlink($file);
+            }
+        }
     }
 
     #[DataProvider('shared')]

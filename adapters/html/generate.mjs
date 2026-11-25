@@ -153,8 +153,12 @@ export function generate(site) {
   return fragments(siteValues(site));
 }
 
+/** The reopen link: to the privacy policy, named like the settings dialog the first-layer text points to. */
+export const footerLink = (privacyUrl, title) => `<a href="${escapeHtml(privacyUrl)}" data-ck-open>${escapeHtml(title)}</a>\n`;
+
 /** The fragments of checked site values (siteValues()), script.html loading kit.js from `kitPath`. The WordPress
- *  plugin's templates are these fragments rendered with placeholders as values (adapters/wordpress/generate.mjs). */
+ *  plugin's templates are these fragments rendered with placeholders as values, its first layer and reopen link
+ *  with the strings as placeholders too (adapters/wordpress/generate.mjs). */
 export function fragments(values, kitPath = KIT_PATH) {
   const dist = (name) => readFileSync(path.join(COMMITTED_DIST, name), "utf8");
   const kit = dist("kit.js");
@@ -172,8 +176,7 @@ export function fragments(values, kitPath = KIT_PATH) {
   };
   for (const [lang, { privacyUrl, imprintUrl, texts = {} }] of Object.entries(values.languages)) {
     files[`${lang}/banner.html`] = renderBanner(lang, { ...texts, privacyUrl, imprintUrl, endpoint: values.endpoint, site: values.site });
-    const title = texts.dialogTitle ?? strings(lang).dialogTitle;
-    files[`${lang}/footer-link.html`] = `<a href="${escapeHtml(privacyUrl)}" data-ck-open>${escapeHtml(title)}</a>\n`;
+    files[`${lang}/footer-link.html`] = footerLink(privacyUrl, texts.dialogTitle ?? strings(lang).dialogTitle);
   }
   return files;
 }

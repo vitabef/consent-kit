@@ -1,0 +1,7 @@
+{
+  "title": "Cookies & \"privacy\" <settings>",
+  "text": "  First block — </script><script>alert(1)</script> & \"quotes\", 'apostrophes' and {{site}}\r\n\n \t \nSecond block: &amp; as written\t\n",
+  "acceptAll": "Accept 'all' & go",
+  "dialogTitle": "Privacy & \"cookies\"",
+  "saveChoice": "Save\nchoice"
+}
