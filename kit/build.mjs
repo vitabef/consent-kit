@@ -13,11 +13,12 @@
  *                                             files a site vendors and the Hugo module mounts
  *   adapters/hugo/…                           the Hugo adapter's generated partial and strings
  *                                             (adapters/hugo/generate.mjs)
+ *   adapters/html/example/fragments/          the HTML adapter's example output, from example/site.json
+ *                                             (adapters/html/generate.mjs)
  * Exit 1 when a file is over its budget. The functions are exported so the tests run the SAME minified
  * bytes the sites ship, and render the same reference markup.
  */
-import { transform } from "esbuild";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
@@ -42,6 +43,8 @@ const read = (rel) => readFileSync(path.join(ROOT, rel), "utf8");
 
 /** The three shipped files, minified. */
 export async function buildAssets() {
+  // imported here: the HTML adapter's generator imports this module's renderers on a site's machine, without esbuild
+  const { transform } = await import("esbuild");
   const js = async (rel) =>
     (await transform(read(rel), { loader: "js", minify: true, target: "es2017", legalComments: "none" })).code.trim();
   const css = (await transform(read("src/kit.css"), { loader: "css", minify: true, legalComments: "none" })).code.trim();
@@ -72,7 +75,7 @@ export const LANGS = readdirSync(path.join(ROOT, "src/i18n"))
 /** The placeholders of templates/banner.html that are the adapter's values; every other one is a string key. */
 export const ADAPTER_VALUES = ["privacyUrl", "imprintUrl", "endpoint", "site"];
 
-const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+export const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** Drops the developer comments; keeps the ck: markers. */
 const stripComments = (html) => html.replace(/<!--(?!ck:)[\s\S]*?-->\n?/g, "");
 
@@ -210,6 +213,12 @@ async function main() {
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, text);
   }
+  const html = await import("../adapters/html/generate.mjs");
+  const example = path.join(REPO, "adapters", "html", "example");
+  const fragments = html.generate(JSON.parse(readFileSync(path.join(example, "site.json"), "utf8")));
+  // the example holds exactly one generation: a new kit.js comes with a new fingerprinted file name
+  rmSync(path.join(example, "fragments"), { recursive: true, force: true });
+  html.write(fragments, path.join(example, "fragments"));
   if (over) {
     console.error("consent-kit: a file is over its brotli budget (see above)");
     process.exit(1);

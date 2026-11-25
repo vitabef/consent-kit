@@ -1,0 +1,1593 @@
+{
+  "version": 1,
+  "spec": "spec/consent-cookie.md",
+  "about": "Test vectors for reading the kit's stored choice from a Cookie request header. A reader passes when its verdict equals `expected` for every vector, `config` taken as the site config (an invalid one is no config). cookieHeader null = no Cookie header.",
+  "vectors": [
+    {
+      "name": "no Cookie header: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": null,
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "an empty Cookie header: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "other cookies only: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "_ga=GA1.1.123456789.1700000000; theme=dark",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a valid choice granting both categories: decided, both granted",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a valid choice granting analytics only: decided, analytics granted",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a valid choice granting marketing only: decided, marketing granted",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a valid choice denying both (a reject is a decision): decided, both denied",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a valid choice between other cookies: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "_ga=GA1.1.123456789.1700000000; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D; theme=dark",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "extra members in the object are ignored: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%2C%22x%22%3A%22extra%22%2C%22n%22%3Anull%2C%22o%22%3A%7B%22v%22%3A1%7D%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "v of an older revision (1 under revision 2): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A1%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "v of a newer revision (3 under revision 2): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A3%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "v as a string (\"2\"): undecided, no type coercion",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A%222%22%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "v missing: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "v true under revision 1: undecided, a boolean is not the number 1",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 1
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3Atrue%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "v 2.0 is the number 2: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2.0%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "v 2.0000000000000001 rounds to the double 2: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2.0000000000000001%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a 1.0 and m 0.0 are the numbers 1 and 0: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1.0%2C%22m%22%3A0.0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t 1700000000.0 is an integer: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A1%2C%22t%22%3A1700000000.0%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": true
+      }
+    },
+    {
+      "name": "exponent forms (v 2e0, a 1E0, m 0e0, t 1.7e9) are plain numbers: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2e0%2C%22a%22%3A1E0%2C%22m%22%3A0e0%2C%22t%22%3A1.7e9%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "m -0 is the number 0: decided, marketing denied",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A-0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a 2: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A2%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a true: undecided, a boolean is not a number",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3Atrue%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a \"1\": undecided, a string is not a number",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A%221%22%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a null: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3Anull%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a missing: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a 0.5: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A0.5%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "m 2: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A2%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "m true: undecided, a boolean is not a number",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3Atrue%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "m \"1\": undecided, a string is not a number",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A%221%22%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "m null: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3Anull%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "m missing: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "m false: undecided, a boolean is not a number",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3Afalse%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t missing: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t 0: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A0%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t negative: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A-1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t 1.5: undecided, not an integer",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1.5%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t \"1700000000\" (a string): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A%221700000000%22%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t true: undecided, a boolean is not a number",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3Atrue%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t 1, the smallest positive integer: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "t 9007199254740991 (2^53 - 1), the largest safe integer: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A9007199254740991%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t 9007199254740992 (2^53), beyond the safe integers: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A9007199254740992%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t 1e400 reads as Infinity, not a safe integer: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1e400%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t 1e-400 reads as 0: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1e-400%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "t Infinity (a bare literal, not JSON): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3AInfinity%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a truncated escape (%E0%A4%A): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%E0%A4%A",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a \"%\" with one hex digit (%2) after a valid object: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D%2",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "invalid UTF-8 (%FF) inside a member's string: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22x%22%3A%22%FF%22%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "an encoded UTF-16 surrogate (%ED%A0%80) inside a member's string: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22x%22%3A%22%ED%A0%80%22%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "an overlong UTF-8 form (%C0%AF) inside a member's string: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22x%22%3A%22%C0%AF%22%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "valid UTF-8 escapes (%C3%A4) inside a member's string: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22x%22%3A%22%C3%A4%22%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a raw non-ASCII character (ä) inside a member's string: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22x%22%3A%22ä%22%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a lone \"%\" inside a member's string: undecided (a decoder that keeps a bad escape as text would accept it)",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22x%22%3A%22%%22%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "JSON never percent-encoded, with a lone \"%\" inside a member's string: undecided (the raw text never counts when decoding fails)",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent={\"v\":2,\"a\":1,\"m\":1,\"t\":1700000000,\"x\":\"%\"}",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "lower-case hex digits decode like upper-case ones: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7b%22v%22%3a2%2c%22a%22%3a1%2c%22m%22%3a0%2c%22t%22%3a1700000000%7d",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "JSON that was never percent-encoded decodes to itself: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent={\"v\":2,\"a\":1,\"m\":0,\"t\":1700000000}",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a value in double quotes: undecided, the quotes are part of the value",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=\"%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D\"",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a \"+\" where JSON allows whitespace stays a \"+\": undecided (read as a space, it would be valid)",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B+%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a \"+\" in an exponent (t 1.7e+9) stays a \"+\": decided (read as a space, it would be invalid)",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1.7e+9%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "not JSON (yes): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=yes",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "truncated JSON: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a trailing comma: undecided, strict JSON",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "single quotes: undecided, strict JSON",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B'v'%3A2%2C'a'%3A1%2C'm'%3A1%2C't'%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a comment in the JSON: undecided, strict JSON",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2F*%20granted%20*%2F%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a leading zero (t 01): undecided, strict JSON",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A01%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "an extra member NaN (a bare literal, not JSON): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22x%22%3ANaN%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "an extra member Infinity (a bare literal, not JSON): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22x%22%3AInfinity%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "1e400 in an extra member (Infinity there) does not fail the copy: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%2C%22x%22%3A1e400%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "JSON null: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=null",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a JSON array: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%5B2%2C1%2C1%2C1700000000%5D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a JSON string holding the object's text: undecided, never parsed twice",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%22%7B%5C%22v%5C%22%3A2%2C%5C%22a%5C%22%3A1%2C%5C%22m%5C%22%3A1%2C%5C%22t%5C%22%3A1700000000%7D%22",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "whitespace around and inside the JSON (encoded space, tab, CR, LF): decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%20%09%0A%7B%20%22v%22%20%3A%202%20%2C%20%22a%22%20%3A%201%20%2C%20%22m%22%20%3A%201%20%2C%20%22t%22%20%3A%201700000000%20%7D%0D%0A%20",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a byte order mark (%EF%BB%BF) before the JSON: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%EF%BB%BF%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a repeated member counts with its last value (a 1, then a 0): decided, analytics denied",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22a%22%3A0%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a repeated member counts with its last value (a 0, then a 1): decided, analytics granted",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22a%22%3A1%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a repeated v counts with its last value (the current revision, then an older one): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%2C%22v%22%3A1%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "an extra member nested 600 levels deep: decided (a parser's depth limit must allow it)",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%2C%22x%22%3A%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5B%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%5D%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a \"__proto__\" member holding a choice is not the choice: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22__proto__%22%3A%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "two copies, one granting both, one denying both: decided, both denied",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "the same two copies in the other order: decided, both denied",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "two identical valid copies: decided, that choice",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "crossed copies (analytics only, marketing only): decided, both denied, each category needs every valid copy",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a valid copy, then a malformed one: the valid copy counts",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D; ck_consent=garbage",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a malformed copy, then a valid one: the valid copy counts",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%E0%A4%A; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": true
+      }
+    },
+    {
+      "name": "an empty copy, then a valid one: the valid copy counts",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a denying copy of an older revision next to a granting copy of the current one: only the current one counts, both granted",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A1%2C%22a%22%3A0%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "three copies (granting both, analytics only, an older revision denying both): decided, analytics granted",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D; ck_consent=%7B%22v%22%3A1%2C%22a%22%3A0%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a cookie whose name starts with the configured name (ck_consent_old): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent_old=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "ck_consent_old granting next to ck_consent denying: only ck_consent counts",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent_old=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a cookie whose name ends with the configured name (xck_consent): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "xck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "the configured name in upper case (CK_CONSENT): undecided, names are case-sensitive",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "CK_CONSENT=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a configured name that is only a prefix of the cookie's (config ck): undecided",
+      "config": {
+        "cookie": "ck",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "the name comes from the config (site_consent): that cookie counts, ck_consent is just another cookie",
+      "config": {
+        "cookie": "site_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D; site_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a configured name with a dot (ck.consent): that cookie counts",
+      "config": {
+        "cookie": "ck.consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck.consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a configured name with a dot (ck.consent) is matched literally: ckxconsent is another cookie, undecided (a regular expression built from the name would match it)",
+      "config": {
+        "cookie": "ck.consent",
+        "revision": 2
+      },
+      "cookieHeader": "ckxconsent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a configured name with a dot (ck.consent): ck_consent is another cookie, undecided (PHP's $_COOKIE turns the dot into _)",
+      "config": {
+        "cookie": "ck.consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a pair without \"=\" (the bare name): no copy, undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent; theme=dark",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a pair without \"=\" next to a valid copy: the valid copy counts",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a choice value without a name: no copy, undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a space between the name and \"=\": not the cookie, undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent =%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "an empty value (\"ck_consent=\"): undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a second \"=\" right after the name's: the value starts with \"=\", undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent==%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "pairs separated by \";\" without a space: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "theme=dark;ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D;lang=de",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "several spaces after \";\": decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "theme=dark;   ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a tab after \";\": decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "theme=dark;\tck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": true
+      }
+    },
+    {
+      "name": "spaces before \";\": decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "theme=dark  ; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D  ; lang=de",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "an empty pair (\";;\") and a trailing \";\": decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "theme=dark;; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D;",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a leading \";\" and tab before the first pair: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": ";\tck_consent=%7B%22v%22%3A2%2C%22a%22%3A0%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a vertical tab (U+000B) before the name is not trimmed: not the cookie, undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "theme=dark;\u000bck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a vertical tab (U+000B) after the value is not trimmed, and no JSON whitespace: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D\u000b; theme=dark",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a raw space inside the value, where JSON allows whitespace: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B %22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "a \",\" is no separator: a choice after it is part of another cookie's value, undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "theme=dark, ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a \",\" after the choice makes its value invalid JSON: undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D, theme=dark",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "a long header (8 KB of unrelated cookies) with the choice last: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2
+      },
+      "cookieHeader": "c00=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c01=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c02=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c03=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c04=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c05=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c06=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c07=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c08=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c09=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c10=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c11=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c12=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c13=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c14=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c15=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c16=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c17=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c18=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c19=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c20=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c21=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c22=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c23=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c24=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c25=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c26=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c27=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c28=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c29=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c30=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c31=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c32=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c33=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c34=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c35=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c36=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c37=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c38=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c39=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c40=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c41=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c42=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c43=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c44=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c45=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c46=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c47=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c48=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c49=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c50=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c51=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c52=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c53=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c54=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c55=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c56=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c57=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c58=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c59=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c60=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c61=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c62=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; c63=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    },
+    {
+      "name": "config revision 0: no config, undecided even with a matching copy",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 0
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A0%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "config revision 1000001: no config, undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 1000001
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A1000001%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "config revision 1.5: no config, undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 1.5
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A1.5%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "config revision \"2\" (a string): no config, undecided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": "2"
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D; ck_consent=%7B%22v%22%3A%222%22%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "config revision true: no config, undecided (true is not the number 1)",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": true
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A1%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D; ck_consent=%7B%22v%22%3Atrue%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "config cookie \"\" (empty): no config, undecided",
+      "config": {
+        "cookie": "",
+        "revision": 2
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D; =%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": false,
+        "analytics": false,
+        "marketing": false
+      }
+    },
+    {
+      "name": "config revision 1, the lower bound: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 1
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A1%2C%22a%22%3A1%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": true
+      }
+    },
+    {
+      "name": "config revision 1000000, the upper bound: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 1000000
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A1000000%2C%22a%22%3A0%2C%22m%22%3A1%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": false,
+        "marketing": true
+      }
+    },
+    {
+      "name": "config revision 2.0 is the number 2: decided",
+      "config": {
+        "cookie": "ck_consent",
+        "revision": 2.0
+      },
+      "cookieHeader": "ck_consent=%7B%22v%22%3A2%2C%22a%22%3A1%2C%22m%22%3A0%2C%22t%22%3A1700000000%7D",
+      "expected": {
+        "decided": true,
+        "analytics": true,
+        "marketing": false
+      }
+    }
+  ]
+}

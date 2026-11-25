@@ -6,10 +6,11 @@
 #   3. hugo       — are Hugo 0.141.0 extended (the module's minimum) and 0.169.0 extended (the newest tested) here
 #                   (mise; adapters/hugo/test/hugo.mjs)? The Hugo adapter's build tests with a missing one are
 #                   SKIPPED: said here and in the last line, never silently
-#   4. tests      — vitest run (kit in happy-dom + build checks with the drift guards of dist/ and the Hugo
-#                   adapter's generated files, the Hugo example-site build, Worker in node)
-#   5. kit build  — node kit/build.mjs: minify, write kit/dist/, dist/ and the Hugo adapter's generated files,
-#                   exit 1 over a brotli budget
+#   4. tests      — vitest run (kit in happy-dom + build checks with the drift guards of dist/, the Hugo
+#                   adapter's generated files and the HTML adapter's example, the Hugo example-site build, the
+#                   stored-choice vectors, Worker in node)
+#   5. kit build  — node kit/build.mjs: minify, write kit/dist/, dist/, the Hugo adapter's generated files and the
+#                   HTML adapter's example, exit 1 over a brotli budget
 # Exit code: 0 = all green (push-ready), non-zero = a step failed (DO NOT push).
 # Usage: sh scripts/pre-push-gate.sh   (or: npm run gate)
 # =============================================================================
