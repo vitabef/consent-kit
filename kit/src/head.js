@@ -8,7 +8,8 @@
  * It reads the stored choice — cookie `<config.cookie>` = encodeURIComponent(JSON {v, a, m, t}) — and accepts
  * it only when v equals config.revision (an integer from 1 to 1,000,000 — the records service's range; a bump
  * re-asks; any other revision, or a config.cookie that is not a non-empty string, makes the whole config count
- * as missing), a and m are 0 or 1 and t is a positive integer (unix seconds). Several copies of the cookie
+ * as missing), a and m are 0 or 1 and t is a positive safe integer (unix seconds, at most 2^53 - 1; a server
+ * reads the cookie by the same rules: spec/consent-cookie.md). Several copies of the cookie
  * (host + registrable domain) fail closed: the most restrictive valid copy counts. A valid choice:
  *   - adds `ck-decided` to <html> (kit.css hides layer 1 — no flash, no layout shift),
  *   - pushes gtag('consent', 'update', …) NOW, before any gated script can be activated (kit.js activates
@@ -47,7 +48,8 @@
       if (parts[i].indexOf(name + "=") !== 0) continue;
       try {
         var o = JSON.parse(decodeURIComponent(parts[i].slice(name.length + 1)));
-        if (o && o.v === cfg.revision && bit(o.a) && bit(o.m) && typeof o.t === "number" && o.t > 0 && Math.floor(o.t) === o.t) {
+        // t: a safe integer (at most 2^53 - 1) — the integers every JSON parser reads alike, so a server reads it too
+        if (o && o.v === cfg.revision && bit(o.a) && bit(o.m) && Number.isSafeInteger(o.t) && o.t > 0) {
           out.push(o);
         }
       } catch (e) {

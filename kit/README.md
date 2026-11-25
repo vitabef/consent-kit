@@ -240,8 +240,9 @@ why a withdrawal reloads the page.
 | Value | `encodeURIComponent(JSON.stringify({v, a, m, t}))` — `v` the revision, `a` analytics and `m` marketing as 0 or 1, `t` the time in unix seconds; no visitor id |
 | Attributes | `Max-Age=15552000` (180 days), `Path=/`, `SameSite=Lax`, and `Secure` on https only (a plain-http test host would drop the whole cookie); no `Domain`, so the cookie belongs to the host |
 | Written | only on a decision — the automatic GPC reject writes none; every existing copy (on the host, with `domain` on the domain, and on the full hostname) is deleted first |
-| Read | by the head snippet: a copy counts only when `v` equals `revision`, `a` and `m` are 0 or 1 and `t` is a positive integer; with several valid copies the most restrictive one counts; anything else = undecided |
+| Read | by the head snippet: a copy counts only when `v` equals `revision`, `a` and `m` are 0 or 1 and `t` is a positive integer of at most 2^53 − 1; with several valid copies the most restrictive one counts; anything else = undecided |
 | Asking again | raise `revision`: every stored choice stops counting and the first layer shows again |
+| On a server | read from the `Cookie` header exactly as the head snippet reads it: [spec/consent-cookie.md](../spec/consent-cookie.md), with shared test vectors |
 
 A revision bump needs every cached copy of the site's HTML purged: a page still on the old revision counts the new
 choice as none and a decision there replaces it, so tabs on the old and the new revision invalidate each other's choice.
@@ -544,5 +545,6 @@ is empty, so it sends no records. It is for local development only, never deploy
 
 `kit/test/kit.test.ts` runs the minified `head.js` and `kit.js`, exactly as built, in happy-dom on the rendered
 reference markup; the network is impossible by construction (`fetch` is a spy, script loading and navigation are off).
-`kit/test/build.test.ts` checks the budgets, the German and English strings and the rendering. Both run in `npm test`
-and in the gate.
+`kit/test/cookie-vectors.test.ts` runs the minified `head.js` over every case of `spec/vectors.json`.
+`kit/test/build.test.ts` checks the budgets, the German and English strings and the rendering. All three run in
+`npm test` and in the gate.

@@ -16,7 +16,7 @@ configuration, deploy and admin access.
 
 ## Status
 
-Version 0.1.4, maintained for the maintainer's own sites. There is no support, and issues and pull requests are not
+Version 0.1.5, maintained for the maintainer's own sites. There is no support, and issues and pull requests are not
 accepted. Security reports: [SECURITY.md](SECURITY.md).
 
 ## Requirements
@@ -74,6 +74,16 @@ partials: `consent-kit/head.html` right after its Google Consent Mode defaults, 
 the committed build output `dist/` — the same files any other site vendors. Parameters, own texts, versions and
 local development: [adapters/hugo/README.md](adapters/hugo/README.md).
 
+## Any other website, and reading the choice on a server
+
+- **Any HTML site:** `node adapters/html/generate.mjs <site.json> <out-dir>` writes the fragments a site pastes into
+  its pages — the head part, the first layer and the dialog per language, the reopen link, the kit.js tag and the
+  fingerprinted kit.js — from the kit's own sources, with only Node.js: [adapters/html/README.md](adapters/html/README.md).
+- **A server that reads the visitor's choice** (to gate a cookie or a tag it sets itself):
+  [spec/consent-cookie.md](spec/consent-cookie.md) says how to read the cookie from a request exactly as the head
+  snippet reads it, and what a server may and may not do with the answer; every implementation passes the shared test
+  vectors in [spec/vectors.json](spec/vectors.json), which the head snippet itself is tested against.
+
 ## Repository layout
 
 | Path | What |
@@ -81,13 +91,15 @@ local development: [adapters/hugo/README.md](adapters/hugo/README.md).
 | `kit/src/head.js`, `kit/src/kit.js`, `kit/src/kit.css` | the kit's three shipped files (sources) |
 | `kit/src/i18n/de.json`, `en.json` | the reference strings — sample wording; a site supplies its own texts |
 | `kit/templates/banner.html` | the reference markup: first layer + settings dialog |
-| `kit/build.mjs` | the build: minify into `kit/dist/` (git-ignored) and `dist/`, write the Hugo adapter's generated files, brotli budgets, demo pages |
+| `kit/build.mjs` | the build: minify into `kit/dist/` (git-ignored) and `dist/`, write the Hugo adapter's generated files and the HTML adapter's example, brotli budgets, demo pages |
 | `kit/demo/` | a fake host page for local development (never deployed) |
-| `kit/test/` | `kit.test.ts` runs the minified kit in happy-dom; `build.test.ts` checks budgets, the committed `dist/`, strings, markup |
+| `kit/test/` | `kit.test.ts` runs the minified kit in happy-dom; `cookie-vectors.test.ts` runs its head snippet over `spec/vectors.json`; `build.test.ts` checks budgets, the committed `dist/`, strings, markup |
 | `kit/README.md` | the site integration guide |
 | `dist/` | the three shipped files, minified — committed, written by the build: what a site vendors and the Hugo module mounts |
 | `go.mod`, `hugo.toml` | the Hugo module: its path, its minimum Hugo version and its mounts |
 | `adapters/hugo/` | the Hugo adapter: partials, sample strings, an example site, tests ([adapters/hugo/README.md](adapters/hugo/README.md)) |
+| `adapters/html/` | the HTML adapter: the fragment generator, an example config with its output, tests ([adapters/html/README.md](adapters/html/README.md)) |
+| `spec/` | the stored choice read on a server: the rules and the shared test vectors ([spec/consent-cookie.md](spec/consent-cookie.md)) |
 | `worker/src/index.ts` | the Worker: the two routes, the 404 fallback, the error answer, the cron handler |
 | `worker/src/record.ts`, `contract.ts`, `body.ts` | `POST /v1/record`: handler, record contract + rate-limit keys, bounded body reader |
 | `worker/src/records-db.ts`, `scheduled.ts` | the table's insert, prune and admin read; the hourly cron |
@@ -114,16 +126,18 @@ The gate runs five steps and stops at the first failure (exit code 0 = push-read
 3. **Hugo** — `node adapters/hugo/test/hugo.mjs`: are Hugo 0.141.0 extended (the module's minimum) and 0.169.0
    extended (the newest tested) available through mise (`mise x hugo-extended@<version>`)? The Hugo adapter's build
    tests run with each; without one, its tests are skipped, and the gate says so here and in its last line.
-4. **Tests** — `vitest run`: `kit/test/`, `adapters/hugo/test/` and `worker/test/`. They fail while the committed
-   `dist/` or the Hugo adapter's generated files differ from a fresh build. The Worker tests need a Node.js whose
+4. **Tests** — `vitest run`: `kit/test/`, `adapters/hugo/test/`, `adapters/html/test/` and `worker/test/`. They fail
+   while the committed `dist/`, the Hugo adapter's generated files or the HTML adapter's example differ from a fresh
+   build. The Worker tests need a Node.js whose
    built-in `node:sqlite` module needs no flag: 22.13 or later in the 22 line, 23.4 or later (`engines` in
    `package.json`).
-5. **Kit build + brotli budgets** — `node kit/build.mjs` writes `kit/dist/`, `dist/` and the Hugo adapter's generated
-   files, and exits 1 when a file is over its brotli budget: `head.js` 900 B, `kit.css` 2,200 B, `kit.js` 2,550 B
+5. **Kit build + brotli budgets** — `node kit/build.mjs` writes `kit/dist/`, `dist/`, the Hugo adapter's generated
+   files and the HTML adapter's example, and exits 1 when a file is over its brotli budget: `head.js` 900 B, `kit.css` 2,200 B, `kit.js` 2,550 B
    (actual sizes in `kit/dist/sizes.json`).
 
 Single steps: `npm run typecheck` (both type checks), `npm test`, `npm run build`. After a change to `kit/src/` or
-`kit/templates/`, run `npm run build` and commit `dist/` and the regenerated files in `adapters/hugo/` with it.
+`kit/templates/`, run `npm run build` and commit `dist/` and the regenerated files in `adapters/hugo/` and
+`adapters/html/example/fragments/` with it.
 
 **Demo page.** After a build, serve `kit/dist/` as the web root with any static server and open `demo/index.html`
 (German) or `demo/en/index.html` (English). It is a fake host page with the kit emitted the way a site adapter emits it:
@@ -345,9 +359,11 @@ deleted or misconfigured application) is refused as well.
 1. **Pick a site id** and add it to `SITES` in the deployment's config (comma-separated, e.g.
    `"example-site,<new-id>"`), then deploy. Records naming an id that is not in `SITES` are dropped.
 2. **The built kit**: a Hugo site imports the module ([Use with Hugo](#use-with-hugo)), whose partials emit steps 3
-   and 4 and the kit.js tag. Any other site vendors the committed `dist/`: `dist/head.js` and `dist/kit.css` are
-   inlined in `<head>`, `dist/kit.js` is served as one same-origin deferred file. The build adds no fingerprint; the
-   site's pipeline fingerprints `kit.js`.
+   and 4 and the kit.js tag. Any other site vendors the committed `dist/` — the HTML adapter
+   ([adapters/html/README.md](adapters/html/README.md)) writes all of it as fragments: `dist/head.js` and
+   `dist/kit.css` are inlined in `<head>`, `dist/kit.js` is served as one same-origin deferred file. The build adds no fingerprint; the
+   site's pipeline fingerprints `kit.js` — the HTML adapter writes it as `kit.<sha256>.js` with a matching
+   `integrity`.
 3. **`<head>` order**: the site's Google Consent Mode defaults (all denied, no `url_passthrough`) → the config block
    `<script type="application/json" id="ck-config">` → the inline head snippet → the inline CSS.
 4. **First in `<body>`**: `kit/templates/banner.html`, rendered in the page language, with

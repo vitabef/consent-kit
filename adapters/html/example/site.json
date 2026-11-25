@@ -1,0 +1,16 @@
+{
+  "revision": 1,
+  "cookie": "ck_consent",
+  "domain": "example.com",
+  "endpoint": "https://consent.example.com/v1/record",
+  "site": "example-site",
+  "legacy": ["previous-tool-consent"],
+  "cleanup": {
+    "analytics": { "cookies": ["_ga", "_ga_*"] },
+    "marketing": { "cookies": ["_gcl_*"], "localStorage": ["_gcl_ls"] }
+  },
+  "languages": {
+    "de": { "privacyUrl": "/datenschutz/", "imprintUrl": "/impressum/" },
+    "en": { "privacyUrl": "/en/privacy/", "imprintUrl": "/en/imprint/" }
+  }
+}
