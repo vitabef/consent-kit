@@ -15,6 +15,9 @@
  *                                             (adapters/hugo/generate.mjs)
  *   adapters/html/example/fragments/          the HTML adapter's example output, from example/site.json
  *                                             (adapters/html/generate.mjs)
+ *   adapters/wordpress/consent-kit/fragments/, helper/
+ *                                             the WordPress plugin's templates and its copy of the PHP helper
+ *                                             (adapters/wordpress/generate.mjs)
  * Exit 1 when a file is over its budget. The functions are exported so the tests run the SAME minified
  * bytes the sites ship, and render the same reference markup.
  */
@@ -219,6 +222,11 @@ async function main() {
   // the example holds exactly one generation: a new kit.js comes with a new fingerprinted file name
   rmSync(path.join(example, "fragments"), { recursive: true, force: true });
   html.write(fragments, path.join(example, "fragments"));
+  const wordpress = await import("../adapters/wordpress/generate.mjs");
+  const plugin = path.join(REPO, "adapters", "wordpress", "consent-kit");
+  // the same for the plugin's generated folders: one generation each, the hand-written files beside them untouched
+  for (const dir of ["fragments", "helper"]) rmSync(path.join(plugin, dir), { recursive: true, force: true });
+  html.write(wordpress.generate(), plugin);
   if (over) {
     console.error("consent-kit: a file is over its brotli budget (see above)");
     process.exit(1);

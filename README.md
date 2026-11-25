@@ -85,6 +85,9 @@ local development: [adapters/hugo/README.md](adapters/hugo/README.md).
   vectors in [spec/vectors.json](spec/vectors.json), which the head snippet itself is tested against.
 - **A PHP server:** `adapters/php/` is that reader in plain PHP, with the cleanup's `Set-Cookie` deletions:
   [adapters/php/README.md](adapters/php/README.md).
+- **A WordPress site:** `adapters/wordpress/consent-kit/` is a plugin folder — a settings page, the HTML adapter's
+  fragments in every page, the PHP helper's verdict as `consent_kit_verdict()` and its cleanup:
+  [adapters/wordpress/README.md](adapters/wordpress/README.md).
 
 ## Repository layout
 
@@ -93,7 +96,7 @@ local development: [adapters/hugo/README.md](adapters/hugo/README.md).
 | `kit/src/head.js`, `kit/src/kit.js`, `kit/src/kit.css` | the kit's three shipped files (sources) |
 | `kit/src/i18n/de.json`, `en.json` | the reference strings — sample wording; a site supplies its own texts |
 | `kit/templates/banner.html` | the reference markup: first layer + settings dialog |
-| `kit/build.mjs` | the build: minify into `kit/dist/` (git-ignored) and `dist/`, write the Hugo adapter's generated files and the HTML adapter's example, brotli budgets, demo pages |
+| `kit/build.mjs` | the build: minify into `kit/dist/` (git-ignored) and `dist/`, write the Hugo adapter's generated files, the HTML adapter's example and the WordPress plugin's generated files, brotli budgets, demo pages |
 | `kit/demo/` | a fake host page for local development (never deployed) |
 | `kit/test/` | `kit.test.ts` runs the minified kit in happy-dom; `cookie-vectors.test.ts` runs its head snippet over `spec/vectors.json`; `build.test.ts` checks budgets, the committed `dist/`, strings, markup |
 | `kit/README.md` | the site integration guide |
@@ -102,6 +105,7 @@ local development: [adapters/hugo/README.md](adapters/hugo/README.md).
 | `adapters/hugo/` | the Hugo adapter: partials, sample strings, an example site, tests ([adapters/hugo/README.md](adapters/hugo/README.md)) |
 | `adapters/html/` | the HTML adapter: the fragment generator, an example config with its output, tests ([adapters/html/README.md](adapters/html/README.md)) |
 | `adapters/php/` | the PHP helper: the stored choice read on a PHP server, the cleanup's deletions, PHPUnit tests ([adapters/php/README.md](adapters/php/README.md)) |
+| `adapters/wordpress/` | the WordPress plugin: the plugin folder `consent-kit/` with its generated templates and helper copy, the generator, PHPUnit tests and a run in a real WordPress ([adapters/wordpress/README.md](adapters/wordpress/README.md)) |
 | `spec/` | the stored choice read on a server: the rules and the shared test vectors ([spec/consent-cookie.md](spec/consent-cookie.md)) |
 | `worker/src/index.ts` | the Worker: the two routes, the 404 fallback, the error answer, the cron handler |
 | `worker/src/record.ts`, `contract.ts`, `body.ts` | `POST /v1/record`: handler, record contract + rate-limit keys, bounded body reader |
@@ -129,21 +133,24 @@ The gate runs six steps and stops at the first failure (exit code 0 = push-ready
 3. **Hugo** — `node adapters/hugo/test/hugo.mjs`: are Hugo 0.141.0 extended (the module's minimum) and 0.169.0
    extended (the newest tested) available through mise (`mise x hugo-extended@<version>`)? The Hugo adapter's build
    tests run with each; without one, its tests are skipped, and the gate says so here and in its last line.
-4. **Tests** — `vitest run`: `kit/test/`, `adapters/hugo/test/`, `adapters/html/test/` and `worker/test/`. They fail
-   while the committed `dist/`, the Hugo adapter's generated files or the HTML adapter's example differ from a fresh
-   build. The Worker tests need a Node.js whose
+4. **Tests** — `vitest run`: `kit/test/`, `adapters/hugo/test/`, `adapters/html/test/`, `adapters/wordpress/test/`
+   and `worker/test/`. They fail while the committed `dist/`, the Hugo adapter's generated files, the HTML adapter's
+   example or the WordPress plugin's generated files differ from a fresh build. The Worker tests need a Node.js whose
    built-in `node:sqlite` module needs no flag: 22.13 or later in the 22 line, 23.4 or later (`engines` in
    `package.json`).
 5. **Kit build + brotli budgets** — `node kit/build.mjs` writes `kit/dist/`, `dist/`, the Hugo adapter's generated
-   files and the HTML adapter's example, and exits 1 when a file is over its brotli budget: `head.js` 900 B, `kit.css` 2,200 B, `kit.js` 2,550 B
-   (actual sizes in `kit/dist/sizes.json`).
-6. **PHP helper** — `adapters/php/vendor/bin/phpunit`, where `php` and the helper's dev install (`composer install`
-   in `adapters/php`) are present; without them its tests are skipped, and the gate says so here and in its last line.
+   files, the HTML adapter's example and the WordPress plugin's generated files, and exits 1 when a file is over its
+   brotli budget: `head.js` 900 B, `kit.css` 2,200 B, `kit.js` 2,550 B (actual sizes in `kit/dist/sizes.json`).
+6. **PHP** — `adapters/php/vendor/bin/phpunit`: the PHP helper's suite, then the WordPress plugin's
+   (`--configuration adapters/wordpress/phpunit.xml.dist`), where `php` and the helper's dev install
+   (`composer install` in `adapters/php`) are present; without them both are skipped, and the gate says so here and
+   in its last line. The plugin's run in a real WordPress needs Docker and stays a step by hand
+   (`sh adapters/wordpress/test/run.sh`).
 
 Single steps: `npm run typecheck` (both type checks), `npm test`, `npm run build`; the PHP helper's `composer test`
-in `adapters/php`. After a change to `kit/src/` or
-`kit/templates/`, run `npm run build` and commit `dist/` and the regenerated files in `adapters/hugo/` and
-`adapters/html/example/fragments/` with it.
+in `adapters/php`. After a change to `kit/src/`, `kit/templates/` or `adapters/php/src/`, run `npm run build` and
+commit `dist/` and the regenerated files in `adapters/hugo/`, `adapters/html/example/fragments/` and
+`adapters/wordpress/consent-kit/` with it.
 
 **Demo page.** After a build, serve `kit/dist/` as the web root with any static server and open `demo/index.html`
 (German) or `demo/en/index.html` (English). It is a fake host page with the kit emitted the way a site adapter emits it:

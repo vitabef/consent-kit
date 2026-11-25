@@ -1,0 +1,45 @@
+# The WordPress run of the plugin (adapters/wordpress/README.md, Tests): started, checked and removed by run.sh.
+name: consent-kit-wordpress
+services:
+  db:
+    image: mariadb:11.8
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wordpress
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  wordpress:
+    image: wordpress:7.1.5-php8.3-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${CONSENT_KIT_WP_PORT:-8890}:80"
+    environment: &environment
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+      # WP_DEBUG: every PHP notice, warning or deprecation is printed into the page, where run.sh looks for one
+      WORDPRESS_DEBUG: "1"
+    volumes: &volumes
+      - wordpress:/var/www/html
+      # the plugin folder as a site installs it, read-only: the plugin writes nothing into it
+      - ../consent-kit:/var/www/html/wp-content/plugins/consent-kit:ro
+      # the run's test hooks (consent_kit_verdict(), themes with wp_body_open() missing or twice), never in the plugin
+      - ./mu-plugin.php:/var/www/html/wp-content/mu-plugins/consent-kit-test.php:ro
+      # the repository, for the checks' reference files and the saved answers (.tmp/wordpress-test/)
+      - ../../..:/repo:ro
+  cli:
+    image: wordpress:cli-2.12.0-php8.3
+    # the web image's www-data, so WP-CLI reads and writes the same files
+    user: "33:33"
+    environment: *environment
+    volumes: *volumes
+volumes:
+  wordpress:

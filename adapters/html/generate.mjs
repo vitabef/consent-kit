@@ -150,7 +150,12 @@ function siteValues(site) {
 
 /** Every fragment and file of a site config, by its path below the output folder. */
 export function generate(site) {
-  const values = siteValues(site);
+  return fragments(siteValues(site));
+}
+
+/** The fragments of checked site values (siteValues()), script.html loading kit.js from `kitPath`. The WordPress
+ *  plugin's templates are these fragments rendered with placeholders as values (adapters/wordpress/generate.mjs). */
+export function fragments(values, kitPath = KIT_PATH) {
   const dist = (name) => readFileSync(path.join(COMMITTED_DIST, name), "utf8");
   const kit = dist("kit.js");
   const sha256 = createHash("sha256").update(kit).digest();
@@ -162,7 +167,7 @@ export function generate(site) {
       `<script data-cfasync="false">${dist("head.js").trimEnd()}</script>`,
       `<style>${dist("kit.css").trimEnd()}</style>`,
     ].join("\n") + "\n",
-    "script.html": `<script data-cfasync="false" src="${KIT_PATH}${kitFile}" integrity="sha256-${sha256.toString("base64")}" defer></script>\n`,
+    "script.html": `<script data-cfasync="false" src="${kitPath}${kitFile}" integrity="sha256-${sha256.toString("base64")}" defer></script>\n`,
     [`consent-kit/${kitFile}`]: kit,
   };
   for (const [lang, { privacyUrl, imprintUrl, texts = {} }] of Object.entries(values.languages)) {
